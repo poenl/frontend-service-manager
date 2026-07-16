@@ -6,5 +6,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return NextResponse.json(startService(id));
+  const result = await startService(id);
+  return NextResponse.json(result);
 }
