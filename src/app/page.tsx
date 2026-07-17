@@ -1,5 +1,5 @@
 import { getServices, getProjectDirs } from '@/lib/config'
-import { getServiceStatus, getServiceLogs } from '@/lib/service-process'
+import { getServiceStatus, getServiceLogs, getPausedCount } from '@/lib/service-process'
 import HomeClient from './client'
 
 export const dynamic = 'force-dynamic'
@@ -16,12 +16,15 @@ export default async function HomePage() {
     initialLogs[s.id] = getServiceLogs(s.id).logs
   }
 
+  const initialPausedCount = getPausedCount()
+
   return (
     <HomeClient
       initialServices={services}
       initialProjectDirs={projectDirs}
       initialRunning={initialRunning}
       initialLogs={initialLogs}
+      initialPausedCount={initialPausedCount}
     />
   )
 }

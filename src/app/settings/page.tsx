@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,10 +14,15 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogCancel,
-  AlertDialogAction,
+  AlertDialogAction
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
-import { fetchProjectDirs, addProjectDir, removeProjectDir, updateProjectDir } from '@/lib/settings-api'
+import {
+  fetchProjectDirs,
+  addProjectDir,
+  removeProjectDir,
+  updateProjectDir
+} from '@/lib/settings-api'
 
 interface DirEntry {
   name: string
@@ -46,7 +51,7 @@ export default function SettingsPage() {
     })()
   }, [])
 
-  const handleAdd = useCallback(async () => {
+  const handleAdd = async () => {
     const name = newName.trim()
     const path = newPath.trim()
     if (!name || !path) return
@@ -62,18 +67,18 @@ export default function SettingsPage() {
     } catch {
       toast.error('添加失败')
     }
-  }, [newName, newPath, dirs])
+  }
 
-  const handleRemove = useCallback(async (path: string) => {
+  const handleRemove = async (path: string) => {
     try {
       const updated = await removeProjectDir(path)
       setDirs(updated)
     } catch {
       toast.error('删除失败')
     }
-  }, [])
+  }
 
-  const handleEdit = useCallback(async () => {
+  const handleEdit = async () => {
     if (!editingPath) return
     const name = editName.trim()
     const path = editPath.trim()
@@ -89,7 +94,7 @@ export default function SettingsPage() {
     } catch {
       toast.error('编辑失败')
     }
-  }, [editingPath, editName, editPath, dirs])
+  }
 
   if (loading) {
     return (
@@ -102,7 +107,10 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 mb-1">
-            <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <Link
+              href="/"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
               ← 返回服务管理
             </Link>
           </div>
@@ -124,20 +132,35 @@ export default function SettingsPage() {
                 placeholder="/path/to/project"
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
               />
-              <Button onClick={handleAdd} disabled={!newName.trim() || !newPath.trim()}>添加</Button>
+              <Button onClick={handleAdd} disabled={!newName.trim() || !newPath.trim()}>
+                添加
+              </Button>
             </div>
             <div className="flex flex-col gap-1.5">
               {dirs.length === 0 ? (
                 <p className="text-sm text-muted-foreground">暂无项目目录</p>
               ) : (
                 dirs.map((dir) => (
-                  <div key={dir.path} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                  <div
+                    key={dir.path}
+                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                  >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="font-medium truncate">{dir.name}</span>
-                      <code className="font-mono text-xs text-muted-foreground shrink-0">{dir.path}</code>
+                      <code className="font-mono text-xs text-muted-foreground shrink-0">
+                        {dir.path}
+                      </code>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <Button variant="outline" size="sm" onClick={() => { setEditingPath(dir.path); setEditName(dir.name); setEditPath(dir.path) }}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditingPath(dir.path)
+                          setEditName(dir.name)
+                          setEditPath(dir.path)
+                        }}
+                      >
                         编辑
                       </Button>
                       <AlertDialog>
@@ -153,7 +176,12 @@ export default function SettingsPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction variant="destructive" onClick={() => handleRemove(dir.path)}>删除</AlertDialogAction>
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => handleRemove(dir.path)}
+                            >
+                              删除
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -164,7 +192,12 @@ export default function SettingsPage() {
             </div>
           </div>
           {/* 编辑项目目录弹窗 */}
-          <AlertDialog open={editingPath !== null} onOpenChange={(open) => { if (!open) setEditingPath(null) }}>
+          <AlertDialog
+            open={editingPath !== null}
+            onOpenChange={(open) => {
+              if (!open) setEditingPath(null)
+            }}
+          >
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>编辑项目目录</AlertDialogTitle>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -40,46 +40,75 @@ import {
   updateService,
   removeService,
   operateService as apiOperateService,
-  fetchServiceStatus,
-  fetchServiceLogs
+  pauseAllServices as apiPauseAll,
+  resumeAllServices as apiResumeAll
 } from '@/lib/service-api'
 import ServiceList from './service-list'
+import { sseClient } from '@/lib/sse-client'
+import { useSSE } from '@/lib/use-sse'
+import { useFrontendUrl } from '@/lib/use-frontend-url'
 import type { ServiceConfig, ProjectDir } from '@/lib/config'
 
 export default function HomeClient({
   initialServices,
-  initialProjectDirs,
+  initialProjectDirs: projectDirs,
   initialRunning = {},
-  initialLogs = {}
+  initialLogs = {},
+  initialPausedCount = 0
 }: {
   initialServices: ServiceConfig[]
   initialProjectDirs: ProjectDir[]
   initialRunning?: Record<string, boolean>
   initialLogs?: Record<string, string[]>
+  initialPausedCount?: number
 }) {
   const [services, setServices] = useState<ServiceConfig[]>(initialServices)
   const [selectedId, setSelectedId] = useState(initialServices[0]?.id ?? '')
   const [running, setRunning] = useState<Record<string, boolean>>(initialRunning)
   const [logs, setLogs] = useState<Record<string, string[]>>(initialLogs)
+  const [pausedCount, setPausedCount] = useState(initialPausedCount)
   const [busy, setBusy] = useState<{ id: string; action: 'start' | 'stop' } | null>(null)
+  const [globalBusy, setGlobalBusy] = useState(false)
 
   const [frontendPortError, setFrontendPortError] = useState<string | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
-  const [projectDirs] = useState<ProjectDir[]>(initialProjectDirs)
 
   const logEndRef = useRef<HTMLDivElement>(null)
-  const sinceRef = useRef<Record<string, number>>(
-    Object.fromEntries(
-      Object.entries(initialLogs).map(([id, arr]) => [id, arr.length])
-    )
-  )
-  const servicesRef = useRef(services)
-  const visibleRef = useRef(true)
-  const [visibilityKey, setVisibilityKey] = useState(0)
 
+  // SSE 连接
   useEffect(() => {
-    servicesRef.current = services
+    sseClient.connect()
+    return () => sseClient.disconnect()
+  }, [])
+
+  useSSE('snapshot', (snapshot: { id: string; running: boolean }[]) => {
+    setRunning((prev) => {
+      const next = { ...prev }
+      for (const s of snapshot) next[s.id] = s.running
+      return next
+    })
   })
+
+  useSSE('status', ({ id, running: isRunning }: { id: string; running: boolean }) => {
+    setRunning((prev) => ({ ...prev, [id]: isRunning }))
+    if (isRunning) setLogs((prev) => ({ ...prev, [id]: [] }))
+  })
+
+  useSSE('log', ({ id, line }: { id: string; line: string }) => {
+    setLogs((prev) => {
+      const current = prev[id] ?? []
+      return { ...prev, [id]: [...current, line] }
+    })
+  })
+
+  useSSE('paused', ({ pausedCount: count }: { pausedCount: number }) => {
+    setPausedCount(count)
+  })
+
+  // 自动滚动日志到底部
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
 
   const selected = services.find((s) => s.id === selectedId)
   const selectedDir = projectDirs.find((p) => p.path === selected?.projectDir)
@@ -88,6 +117,8 @@ export default function HomeClient({
     () => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
     () => false
   )
+
+  const frontendUrl = useFrontendUrl(selected?.frontendPort, !!running[selectedId])
 
   const fieldErrors = selected
     ? {
@@ -99,75 +130,8 @@ export default function HomeClient({
       }
     : {}
 
-  // 页面可见性控制：离开时停止轮询，回来时立即请求
-  useEffect(() => {
-    const handler = () => {
-      visibleRef.current = document.visibilityState === 'visible'
-      if (visibleRef.current) setVisibilityKey(k => k + 1)
-    }
-    document.addEventListener('visibilitychange', handler)
-    return () => document.removeEventListener('visibilitychange', handler)
-  }, [])
-
-  // 轮询状态
-  useEffect(() => {
-    if (services.length === 0) return
-
-    const fetchAllStatus = async () => {
-      if (!visibleRef.current) return
-      const current = servicesRef.current
-      if (current.length === 0) return
-      const results = await Promise.allSettled(
-        current.map((s) => fetchServiceStatus(s.id))
-      )
-      setRunning((prev) => {
-        const next = { ...prev }
-        results.forEach((r, i) => {
-          if (r.status === "fulfilled") next[current[i].id] = r.value.running
-        })
-        return next
-      })
-    }
-
-    const poll = setInterval(fetchAllStatus, 2000)
-    return () => clearInterval(poll)
-  }, [services.length, visibilityKey])
-
-  // 轮询日志
-  const isRunning = running[selectedId]
-  useEffect(() => {
-    if (!selectedId) return
-
-    const fetchLogs = async () => {
-      if (!visibleRef.current) return
-      try {
-        const since = sinceRef.current[selectedId] ?? 0
-        const data = await fetchServiceLogs(selectedId, since)
-        if (data.logs.length > 0) {
-          sinceRef.current[selectedId] = since + data.logs.length
-          setLogs((prev) => ({
-            ...prev,
-            [selectedId]: [...(prev[selectedId] ?? []), ...data.logs]
-          }))
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (isRunning) {
-      const poll = setInterval(fetchLogs, 1000)
-      return () => clearInterval(poll)
-    }
-  }, [selectedId, isRunning, visibilityKey])
-
-  // 自动滚动日志到底部
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
-
   // 添加服务
-  const addService = useCallback(async () => {
+  const addService = async () => {
     try {
       const svc = await createService({
         name: '',
@@ -182,127 +146,131 @@ export default function HomeClient({
     } catch {
       toast.error('添加服务失败')
     }
-  }, [])
+  }
 
   // 保存服务
-  const saveService = useCallback(async (id: string, patch: Partial<ServiceConfig>) => {
+  const saveService = async (id: string, patch: Partial<ServiceConfig>) => {
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)))
     try {
       await updateService(id, patch)
     } catch {
       toast.error('保存服务失败')
     }
-  }, [])
+  }
 
   // 后端地址输入处理：清洗 http:// 前缀，自动提取端口
-  const handleBackendHostChange = useCallback(
-    (id: string, value: string) => {
-      const raw = value.replace(/^https?:\/\//, '')
-      const match = raw.match(/^(.+?):(\d+)$/)
-      if (match) {
-        saveService(id, { backendHost: match[1], backendPort: match[2] })
-      } else {
-        saveService(id, { backendHost: raw })
-      }
-    },
-    [saveService]
-  )
+  const handleBackendHostChange = (id: string, value: string) => {
+    const raw = value.replace(/^https?:\/\//, '')
+    const match = raw.match(/^(.+?):(\d+)$/)
+    if (match) {
+      saveService(id, { backendHost: match[1], backendPort: match[2] })
+    } else {
+      saveService(id, { backendHost: raw })
+    }
+  }
 
   // 名称输入处理
-  const handleNameChange = useCallback(
-    (id: string, value: string) => {
-      saveService(id, { name: value })
-    },
-    [saveService]
-  )
+  const handleNameChange = (id: string, value: string) => {
+    saveService(id, { name: value })
+  }
 
   // 项目目录输入处理
-  const handleProjectDirChange = useCallback(
-    (id: string, value: string) => {
-      saveService(id, { projectDir: value })
-    },
-    [saveService]
-  )
+  const handleProjectDirChange = (id: string, value: string) => {
+    saveService(id, { projectDir: value })
+  }
 
   // 后端端口输入处理：仅保留数字
-  const handleBackendPortChange = useCallback(
-    (id: string, value: string) => {
-      saveService(id, { backendPort: value.replace(/\D/g, '') })
-    },
-    [saveService]
-  )
+  const handleBackendPortChange = (id: string, value: string) => {
+    saveService(id, { backendPort: value.replace(/\D/g, '') })
+  }
 
   // 前端端口输入处理：禁止与本项目端口冲突，禁止与其他服务重复
-  const handleFrontendPortChange = useCallback(
-    (id: string, value: string) => {
-      const clean = value.replace(/\D/g, '')
-      const currentPort = window.location.port
-      let error: string | null = null
+  const handleFrontendPortChange = (id: string, value: string) => {
+    const clean = value.replace(/\D/g, '')
+    const currentPort = window.location.port
+    let error: string | null = null
 
-      if (clean === currentPort) {
-        error = `端口 ${currentPort} 与本服务端口冲突`
-      } else if (clean) {
-        const conflict = services.find((s) => s.id !== id && s.frontendPort === clean)
-        if (conflict) {
-          error = `端口 ${clean} 已被「${conflict.name || '未命名'}」使用`
-        }
+    if (clean === currentPort) {
+      error = `端口 ${currentPort} 与本服务端口冲突`
+    } else if (clean) {
+      const conflict = services.find((s) => s.id !== id && s.frontendPort === clean)
+      if (conflict) {
+        error = `端口 ${clean} 已被「${conflict.name || '未命名'}」使用`
       }
+    }
 
-      setFrontendPortError(error)
-      saveService(id, { frontendPort: clean })
-    },
-    [saveService, services]
-  )
+    setFrontendPortError(error)
+    saveService(id, { frontendPort: clean })
+  }
 
   // 删除服务
-  const deleteService = useCallback(async (id: string) => {
+  const deleteService = async (id: string) => {
     try {
       await removeService(id)
       setServices((prev) => prev.filter((s) => s.id !== id))
+      setRunning((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setLogs((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
       setSelectedId((prev) => (prev === id ? '' : prev))
     } catch {
       toast.error('删除服务失败')
     }
-  }, [])
+  }
 
   // 启动 / 停止
-  const handleServiceAction = useCallback(
-    async (action: 'start' | 'stop') => {
+  const handleServiceAction = async (action: 'start' | 'stop') => {
     if (!selectedId) return
     if (action === 'stop' && !running[selectedId]) return
-      setBusy({ id: selectedId, action })
-      try {
-        const result = await apiOperateService(selectedId, action)
+    setBusy({ id: selectedId, action })
+    try {
+      const result = await apiOperateService(selectedId, action)
 
-        if (!result.success) {
-          toast.error(result.message)
-          return
-        }
-
-        setRunning((prev) => ({ ...prev, [selectedId]: action === 'start' }))
-
-        if (action === 'start') {
-          sinceRef.current[selectedId] = 0
-          setLogs((prev) => ({ ...prev, [selectedId]: [] }))
-        }
-
-        const since = sinceRef.current[selectedId] ?? 0
-        const data = await fetchServiceLogs(selectedId, since)
-        if (data.logs.length > 0) {
-          sinceRef.current[selectedId] = since + data.logs.length
-          setLogs(prev => ({
-            ...prev,
-            [selectedId]: [...(prev[selectedId] ?? []), ...data.logs]
-          }))
-        }
-      } catch {
-        toast.error(`${action === 'start' ? '启动' : '停止'}失败`)
-      } finally {
-        setBusy(null)
+      if (!result.success) {
+        toast.error(result.message)
+        return
       }
-    },
-    [selectedId, running]
-  )
+    } catch {
+      toast.error(`${action === 'start' ? '启动' : '停止'}失败`)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handlePauseAll = async () => {
+    setGlobalBusy(true)
+    try {
+      const result = await apiPauseAll()
+      if (result.success) toast.success(result.message)
+      else toast.error(result.message)
+    } catch {
+      toast.error('暂停操作失败')
+    } finally {
+      setGlobalBusy(false)
+    }
+  }
+
+  const handleResumeAll = async () => {
+    setGlobalBusy(true)
+    try {
+      const result = await apiResumeAll()
+      if (result.success) {
+        toast.success(result.message)
+      } else {
+        toast.error(result.message)
+      }
+    } catch {
+      toast.error('恢复操作失败')
+    } finally {
+      setGlobalBusy(false)
+    }
+  }
 
   return (
     <div className="flex flex-1 h-full gap-4 p-4">
@@ -311,11 +279,15 @@ export default function HomeClient({
         selectedId={selectedId}
         running={running}
         isLocal={isLocal}
+        globalBusy={globalBusy}
+        pausedCount={pausedCount}
         onSelect={(id) => {
           setSelectedId(id)
           setTouched({})
         }}
         onAdd={addService}
+        onPauseAll={handlePauseAll}
+        onResumeAll={handleResumeAll}
       />
 
       {/* 右侧面板 */}
@@ -471,14 +443,14 @@ export default function HomeClient({
                 {busy?.id === selected.id && busy?.action === 'stop' ? <Spinner /> : '■'} 停止
               </Button>
               <Separator orientation="vertical" className="h-6" />
-              {typeof window !== 'undefined' && running[selected.id] && selected.frontendPort ? (
+              {frontendUrl ? (
                 <a
-                  href={`http://${window.location.hostname}:${selected.frontendPort}`}
+                  href={frontendUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-5 items-center gap-1 rounded-4xl border border-transparent bg-primary px-2 py-0.5 text-xs font-medium whitespace-nowrap text-primary-foreground"
                 >
-                  http://{window.location.hostname}:{selected.frontendPort}
+                  {frontendUrl}
                 </a>
               ) : (
                 <Badge variant="secondary">○ 已停止</Badge>
