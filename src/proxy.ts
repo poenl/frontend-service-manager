@@ -1,14 +1,17 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 export function proxy(request: NextRequest) {
-  const { hostname } = request.nextUrl;
-  if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-    return NextResponse.redirect(new URL("/", request.url));
+  const { pathname } = request.nextUrl
+  if (pathname.startsWith('/settings')) {
+    const host = request.headers.get('host') || ''
+    if (!host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+      return NextResponse.redirect(new URL('/', request.url))
+    }
   }
-  return NextResponse.next();
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: "/settings/:path*",
-};
+  matcher: ['/settings', '/settings/:path*']
+}

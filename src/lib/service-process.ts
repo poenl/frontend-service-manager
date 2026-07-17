@@ -11,7 +11,9 @@ interface ProcessEntry {
   startTime: number;
 }
 
-const processes = new Map<string, ProcessEntry>();
+const _g = globalThis as { __processes?: Map<string, ProcessEntry> }
+if (!_g.__processes) _g.__processes = new Map()
+const processes = _g.__processes;
 
 function cleanup() {
   const ids = [...processes.keys()];
