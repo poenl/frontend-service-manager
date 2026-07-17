@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +17,13 @@ import {
 } from '@/components/ui/input-group'
 import { Spinner } from '@/components/ui/spinner'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select'
+import {
   AlertDialog,
   AlertDialogTrigger,
   AlertDialogContent,
@@ -27,6 +35,7 @@ import {
   AlertDialogAction
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
+import { Settings } from 'lucide-react'
 import {
   fetchServices,
   createService,
@@ -36,6 +45,7 @@ import {
   fetchServiceStatus,
   fetchServiceLogs
 } from '@/lib/service-api'
+import { fetchProjectDirs } from '@/lib/settings-api'
 
 interface ServiceConfig {
   id: string
@@ -56,11 +66,23 @@ export default function Home() {
 
   const [frontendPortError, setFrontendPortError] = useState<string | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [projectDirs, setProjectDirs] = useState<{ name: string; path: string }[]>([])
 
   const logEndRef = useRef<HTMLDivElement>(null)
   const sinceRef = useRef<Record<string, number>>({})
+  const servicesRef = useRef(services)
+  const visibleRef = useRef(true)
+  const [visibilityKey, setVisibilityKey] = useState(0)
+
+  useEffect(() => {
+    servicesRef.current = services
+  })
 
   const selected = services.find((s) => s.id === selectedId)
+  const selectedDir = projectDirs.find((p) => p.path === selected?.projectDir)
+  const isLocal =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 
   const fieldErrors = selected
     ? {
@@ -76,9 +98,11 @@ export default function Home() {
   useEffect(() => {
     ;(async () => {
       try {
-        const data = await fetchServices()
-        setServices(data)
-        if (data.length > 0) setSelectedId(data[0].id)
+        const [servicesData, dirsData] = await Promise.all([fetchServices(), fetchProjectDirs()])
+        setServices(servicesData)
+        setRunning(Object.fromEntries(servicesData.map(s => [s.id, false])))
+        setProjectDirs(dirsData)
+        if (servicesData.length > 0) setSelectedId(servicesData[0].id)
       } catch {
         toast.error('加载服务失败')
       } finally {
@@ -87,29 +111,48 @@ export default function Home() {
     })()
   }, [])
 
+  // 页面可见性控制：离开时停止轮询，回来时立即请求
+  useEffect(() => {
+    const handler = () => {
+      visibleRef.current = document.visibilityState === 'visible'
+      if (visibleRef.current) setVisibilityKey(k => k + 1)
+    }
+    document.addEventListener('visibilitychange', handler)
+    return () => document.removeEventListener('visibilitychange', handler)
+  }, [])
+
   // 轮询状态
   useEffect(() => {
-    if (!selectedId) return
+    if (services.length === 0) return
 
-    const fetchStatus = async () => {
-      try {
-        const data = await fetchServiceStatus(selectedId)
-        setRunning((prev) => ({ ...prev, [selectedId]: data.running }))
-      } catch {
-        /* ignore */
-      }
+    const fetchAllStatus = async () => {
+      if (!visibleRef.current) return
+      const current = servicesRef.current
+      if (current.length === 0) return
+      const results = await Promise.allSettled(
+        current.map((s) => fetchServiceStatus(s.id))
+      )
+      setRunning((prev) => {
+        const next = { ...prev }
+        results.forEach((r, i) => {
+          if (r.status === "fulfilled") next[current[i].id] = r.value.running
+        })
+        return next
+      })
     }
 
-    fetchStatus()
-    const poll = setInterval(fetchStatus, 2000)
+    fetchAllStatus()
+    const poll = setInterval(fetchAllStatus, 2000)
     return () => clearInterval(poll)
-  }, [selectedId])
+  }, [services.length, visibilityKey])
 
   // 轮询日志
+  const isRunning = running[selectedId]
   useEffect(() => {
     if (!selectedId) return
 
     const fetchLogs = async () => {
+      if (!visibleRef.current) return
       try {
         const since = sinceRef.current[selectedId] ?? 0
         const data = await fetchServiceLogs(selectedId, since)
@@ -126,9 +169,11 @@ export default function Home() {
     }
 
     fetchLogs()
-    const poll = setInterval(fetchLogs, 1000)
-    return () => clearInterval(poll)
-  }, [selectedId])
+    if (isRunning) {
+      const poll = setInterval(fetchLogs, 1000)
+      return () => clearInterval(poll)
+    }
+  }, [selectedId, isRunning, visibilityKey])
 
   // 自动滚动日志到底部
   useEffect(() => {
@@ -237,7 +282,8 @@ export default function Home() {
   // 启动 / 停止
   const handleServiceAction = useCallback(
     async (action: 'start' | 'stop') => {
-      if (!selectedId) return
+    if (!selectedId) return
+    if (action === 'stop' && !running[selectedId]) return
       setBusy({ id: selectedId, action })
       try {
         const result = await apiOperateService(selectedId, action)
@@ -258,7 +304,7 @@ export default function Home() {
         setBusy(null)
       }
     },
-    [selectedId]
+    [selectedId, running]
   )
 
   if (loading) {
@@ -300,6 +346,16 @@ export default function Home() {
             + 添加服务
           </Button>
         </CardContent>
+        <CardFooter className="mt-auto">
+          <Link
+            href={isLocal ? '/settings' : '#'}
+            className={`flex justify-center items-center gap-2 w-full rounded-lg px-3 py-2 text-sm transition-colors ${
+              isLocal ? 'hover:bg-muted' : 'opacity-50 cursor-not-allowed'
+            }`}
+          >
+            <Settings className="size-4" /> 全局设置
+          </Link>
+        </CardFooter>
       </Card>
 
       {/* 右侧面板 */}
@@ -311,7 +367,7 @@ export default function Home() {
               <CardTitle>服务配置</CardTitle>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <Field className="col-span-2">
+              <Field>
                 <FieldLabel>名称</FieldLabel>
                 <FieldContent>
                   <Input
@@ -324,16 +380,42 @@ export default function Home() {
                   <FieldError>{fieldErrors.name}</FieldError>
                 </FieldContent>
               </Field>
-              <Field className="col-span-2">
+              <Field>
                 <FieldLabel>项目目录</FieldLabel>
                 <FieldContent>
-                  <Input
-                    value={selected.projectDir}
-                    onChange={(e) => handleProjectDirChange(selected.id, e.target.value)}
-                    onBlur={() => setTouched((prev) => ({ ...prev, projectDir: true }))}
-                    placeholder="/path/to/project"
-                    aria-invalid={!!fieldErrors.projectDir || undefined}
-                  />
+                  <Select
+                    value={selected.projectDir || null}
+                    onValueChange={(value) => {
+                      handleProjectDirChange(selected.id, value ?? '')
+                      setTouched((prev) => ({ ...prev, projectDir: true }))
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      aria-invalid={!!fieldErrors.projectDir || undefined}
+                    >
+                      <SelectValue placeholder="选择项目目录">
+                        {selectedDir
+                          ? selectedDir.name
+                            ? `${selectedDir.name} (${selectedDir.path})`
+                            : selectedDir.path
+                          : selected.projectDir}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      {projectDirs.map((dir) => (
+                        <SelectItem key={dir.path} value={dir.path}>
+                          {dir.name ? `${dir.name} (${dir.path})` : dir.path}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Link
+                    href="/settings"
+                    className="text-xs text-muted-foreground hover:text-foreground mt-0.5 inline-block"
+                  >
+                    管理项目目录 →
+                  </Link>
                   <FieldError>{fieldErrors.projectDir}</FieldError>
                 </FieldContent>
               </Field>

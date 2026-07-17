@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { Socket } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getService } from "@/lib/config";
@@ -29,6 +30,27 @@ function detectPm(cwd: string): string {
   return "npx";
 }
 
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    socket.setTimeout(2000);
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, "127.0.0.1");
+    socket.unref();
+  });
+}
+
 export async function startService(id: string): Promise<{ success: boolean; message: string }> {
   const config = getService(id);
   if (!config) return { success: false, message: "服务不存在" };
@@ -36,9 +58,12 @@ export async function startService(id: string): Promise<{ success: boolean; mess
   if (!config.backendHost) return { success: false, message: "请填写后端地址" };
   if (!config.backendPort) return { success: false, message: "请填写后端端口" };
   if (!config.frontendPort) return { success: false, message: "请填写前端端口" };
+  if (await isPortInUse(parseInt(config.frontendPort, 10))) {
+    return { success: false, message: `端口 ${config.frontendPort} 已被其他进程占用` };
+  }
   if (processes.has(id)) {
     const existing = processes.get(id)!;
-    if (existing.proc.exitCode === null) return { success: false, message: "服务已在运行" };
+    if (existing.proc.exitCode === null && existing.proc.signalCode === null) return { success: false, message: "服务已在运行" };
     existing.logs.length = 0;
     existing.startTime = Date.now();
   }
@@ -133,7 +158,7 @@ export async function stopService(id: string): Promise<{ success: boolean; messa
 
   return new Promise((resolve) => {
     const forceKill = setTimeout(() => {
-      if (proc.exitCode === null) proc.kill("SIGKILL");
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
     }, 3000);
 
     proc.on("exit", () => {
@@ -150,7 +175,7 @@ export function getServiceStatus(id: string): {
   uptime?: number;
 } {
   const entry = processes.get(id);
-  if (!entry || entry.proc.exitCode !== null) {
+  if (!entry || entry.proc.exitCode !== null || entry.proc.signalCode !== null) {
     return { running: false };
   }
   return {
