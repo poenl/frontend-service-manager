@@ -31,8 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogDescription,
   AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction
+  AlertDialogCancel
 } from '@/components/ui/alert-dialog'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import type { ServiceConfig, ProjectDir } from '@/lib/config'
@@ -72,6 +71,8 @@ export default function ServiceDetailPanel({
 }: ServiceDetailPanelProps) {
   const [frontendPortError, setFrontendPortError] = useState<string | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const selected = services.find((s) => s.id === selectedId)
   // Hooks 必须在条件返回前调用
@@ -235,7 +236,7 @@ export default function ServiceDetailPanel({
           </Field>
         </CardContent>
         <CardFooter className="justify-end">
-          <AlertDialog>
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
               删除此服务
             </AlertDialogTrigger>
@@ -247,10 +248,20 @@ export default function ServiceDetailPanel({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" onClick={() => onDelete(selected.id)}>
+                <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true)
+                    await onDelete(selected.id)
+                    setIsDeleting(false)
+                    setDeleteOpen(false)
+                  }}
+                >
+                  {isDeleting && <Spinner />}
                   删除
-                </AlertDialogAction>
+                </Button>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

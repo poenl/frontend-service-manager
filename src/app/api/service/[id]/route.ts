@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServices, getService, updateService, deleteService } from '@/lib/config'
-import { getServiceStatus } from '@/lib/service-process'
+import { getServiceStatus, stopService } from '@/lib/service-process'
 import { eventBus } from '@/lib/service-events'
 
 const RUNNING_BLOCKED_FIELDS = ['projectDir', 'backendHost', 'backendPort', 'frontendPort'] as const
@@ -36,6 +36,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  await stopService(id) // 删除前先停止服务（未运行则静默跳过）
   const deleted = deleteService(id)
   if (!deleted) return NextResponse.json({ error: '未找到' }, { status: 404 })
   eventBus.emit('services', getServices())
