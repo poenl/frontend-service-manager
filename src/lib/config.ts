@@ -24,7 +24,7 @@ let _store: Conf<Store> | null = null
 function store(): Conf<Store> {
   if (!_store) {
     _store = new Conf<Store>({
-      projectName: 'ui-server',
+      projectName: 'frontend-service-manager',
       defaults: { services: [], projectDirs: [] }
     })
   }

@@ -1,17 +1,17 @@
-import { redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { getServices, getProjectDirs } from '@/lib/config'
 import { getServiceStatus, getServiceLogs, getPausedCount } from '@/lib/service-process'
-import HomeClient from './client'
+import ServiceDetailPage from './client'
 
 export const dynamic = 'force-dynamic'
 
-export default async function HomePage() {
+export default async function ServicePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const services = getServices()
+  const service = services.find((s) => s.id === id)
 
-  if (services.length > 0) {
-    redirect('/service/' + services[0].id)
-  }
+  if (!service) notFound()
 
   const projectDirs = getProjectDirs()
   const initialRunning: Record<string, boolean> = {}
@@ -28,7 +28,8 @@ export default async function HomePage() {
   const initialHostname = host.split(':')[0]
 
   return (
-    <HomeClient
+    <ServiceDetailPage
+      selectedId={id}
       initialServices={services}
       initialProjectDirs={projectDirs}
       initialRunning={initialRunning}
