@@ -13,7 +13,7 @@ import type { ServiceConfig, ProjectDir } from '@/lib/config'
 export default function ServiceDetailPage({
   selectedId,
   initialServices,
-  initialProjectDirs: projectDirs,
+  initialProjectDirs,
   initialRunning = {},
   initialLogs = {},
   initialPausedCount = 0,
@@ -32,6 +32,7 @@ export default function ServiceDetailPage({
   const router = useRouter()
   const {
     services,
+    projectDirs,
     running,
     logs,
     pausedCount,
@@ -46,6 +47,7 @@ export default function ServiceDetailPage({
     handleResumeAll
   } = useServiceManager({
     initialServices,
+    initialProjectDirs,
     initialRunning,
     initialLogs,
     initialPausedCount

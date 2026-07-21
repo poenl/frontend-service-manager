@@ -17,12 +17,15 @@ import {
   AlertDialogAction
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
+import { sseClient } from '@/lib/sse-client'
+import { useSSE } from '@/lib/use-sse'
 import {
   fetchProjectDirs,
   addProjectDir,
   removeProjectDir,
   updateProjectDir
 } from '@/lib/settings-api'
+import type { ProjectDir } from '@/lib/config'
 
 interface DirEntry {
   name: string
@@ -50,6 +53,16 @@ export default function SettingsPage() {
       }
     })()
   }, [])
+
+  // SSR 连接：监听其他页面的 project-dirs 变更
+  useEffect(() => {
+    sseClient.connect()
+    return () => sseClient.disconnect()
+  }, [])
+
+  useSSE('project-dirs', (data: ProjectDir[]) => {
+    setDirs(data)
+  })
 
   const handleAdd = async () => {
     const name = newName.trim()

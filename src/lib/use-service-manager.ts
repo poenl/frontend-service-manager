@@ -13,10 +13,11 @@ import {
 } from '@/lib/service-api'
 import { toast } from 'sonner'
 import { showNotification, requestPermission } from '@/lib/notification'
-import type { ServiceConfig } from '@/lib/config'
+import type { ServiceConfig, ProjectDir } from '@/lib/config'
 
 interface UseServiceManagerOptions {
   initialServices: ServiceConfig[]
+  initialProjectDirs?: ProjectDir[]
   initialRunning?: Record<string, boolean>
   initialLogs?: Record<string, string[]>
   initialPausedCount?: number
@@ -28,11 +29,13 @@ interface UseServiceManagerOptions {
  */
 export function useServiceManager({
   initialServices,
+  initialProjectDirs = [],
   initialRunning = {},
   initialLogs = {},
   initialPausedCount = 0
 }: UseServiceManagerOptions) {
   const [services, setServices] = useState<ServiceConfig[]>(initialServices)
+  const [projectDirs, setProjectDirs] = useState<ProjectDir[]>(initialProjectDirs)
   const [running, setRunning] = useState<Record<string, boolean>>(initialRunning)
   const [logs, setLogs] = useState<Record<string, string[]>>(initialLogs)
   const [pausedCount, setPausedCount] = useState(initialPausedCount)
@@ -76,6 +79,14 @@ export function useServiceManager({
 
   useSSE('paused', ({ pausedCount: count }: { pausedCount: number }) => {
     setPausedCount(count)
+  })
+
+  useSSE('services', (data: ServiceConfig[]) => {
+    setServices(data)
+  })
+
+  useSSE('project-dirs', (data: ProjectDir[]) => {
+    setProjectDirs(data)
   })
 
   // 自动滚动日志到底部
@@ -173,6 +184,7 @@ export function useServiceManager({
 
   return {
     services,
+    projectDirs,
     running,
     logs,
     pausedCount,

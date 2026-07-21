@@ -7,6 +7,7 @@ import type { ServiceConfig, ProjectDir } from '@/lib/config'
 
 export default function HomeClient({
   initialServices,
+  initialProjectDirs = [],
   initialRunning = {},
   initialLogs = {},
   initialPausedCount = 0,
@@ -32,6 +33,7 @@ export default function HomeClient({
     handleResumeAll
   } = useServiceManager({
     initialServices,
+    initialProjectDirs: initialProjectDirs,
     initialRunning,
     initialLogs,
     initialPausedCount

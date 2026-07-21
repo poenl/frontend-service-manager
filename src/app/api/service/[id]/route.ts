@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getService, updateService, deleteService } from '@/lib/config'
+import { getServices, getService, updateService, deleteService } from '@/lib/config'
 import { getServiceStatus } from '@/lib/service-process'
+import { eventBus } from '@/lib/service-events'
 
 const RUNNING_BLOCKED_FIELDS = ['projectDir', 'backendHost', 'backendPort', 'frontendPort'] as const
 
@@ -26,6 +27,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
   const svc = updateService(id, body)
   if (!svc) return NextResponse.json({ error: '未找到' }, { status: 404 })
+  eventBus.emit('services', getServices())
   return NextResponse.json(svc)
 }
 
@@ -36,5 +38,6 @@ export async function DELETE(
   const { id } = await params
   const deleted = deleteService(id)
   if (!deleted) return NextResponse.json({ error: '未找到' }, { status: 404 })
+  eventBus.emit('services', getServices())
   return NextResponse.json({ success: true })
 }

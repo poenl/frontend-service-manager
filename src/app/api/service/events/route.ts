@@ -1,4 +1,4 @@
-import { getServices } from '@/lib/config'
+import { getServices, getProjectDirs } from '@/lib/config'
 import { getServiceStatus } from '@/lib/service-process'
 import { eventBus } from '@/lib/service-events'
 
@@ -37,9 +37,21 @@ export async function GET(req: Request) {
         )
       }
 
+      const onServices = (payload: unknown) => {
+        controller.enqueue(encoder.encode(`event: services\ndata: ${JSON.stringify(payload)}\n\n`))
+      }
+
+      const onProjectDirs = () => {
+        controller.enqueue(
+          encoder.encode(`event: project-dirs\ndata: ${JSON.stringify(getProjectDirs())}\n\n`)
+        )
+      }
+
       eventBus.on('status', onStatus)
       eventBus.on('log', onLog)
       eventBus.on('paused', onPaused)
+      eventBus.on('services', onServices)
+      eventBus.on('project-dirs', onProjectDirs)
 
       // 30s 心跳保活
       const keepalive = setInterval(() => {
@@ -50,6 +62,8 @@ export async function GET(req: Request) {
         eventBus.off('status', onStatus)
         eventBus.off('log', onLog)
         eventBus.off('paused', onPaused)
+        eventBus.off('services', onServices)
+        eventBus.off('project-dirs', onProjectDirs)
         clearInterval(keepalive)
       })
     }
