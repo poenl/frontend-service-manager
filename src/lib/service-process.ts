@@ -83,6 +83,7 @@ export async function startService(id: string): Promise<{ success: boolean; mess
 
   const env = {
     ...process.env,
+    FORCE_COLOR: '1',
     VITE_APP_BASE_URL:
       config.backendHost && config.backendPort
         ? `http://${config.backendHost}:${config.backendPort}`

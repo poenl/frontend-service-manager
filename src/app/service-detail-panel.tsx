@@ -15,6 +15,7 @@ import {
   InputGroupAddon,
   InputGroupInput
 } from '@/components/ui/input-group'
+import anser from 'anser'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
@@ -310,9 +311,16 @@ export default function ServiceDetailPanel({
         </CardHeader>
         <CardContent className="flex-1 min-h-0 flex flex-col">
           <ScrollArea className="flex-1 min-h-0 w-full rounded-lg border bg-muted/30 p-3">
-            <pre className="text-xs leading-relaxed text-muted-foreground font-mono">
+            <pre className="text-xs leading-relaxed font-mono">
               {(logs[selected.id] ?? []).length > 0
-                ? (logs[selected.id] ?? []).join('\n')
+                ? (logs[selected.id] ?? []).map((line, i) => (
+                    <div
+                      key={i}
+                      dangerouslySetInnerHTML={{
+                        __html: anser.ansiToHtml(line, { use_classes: false })
+                      }}
+                    />
+                  ))
                 : '暂无日志'}
             </pre>
             <div ref={logEndRef} />
