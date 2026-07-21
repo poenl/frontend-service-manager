@@ -14,6 +14,7 @@ interface ServiceListProps {
   selectedId: string
   running: Record<string, boolean>
   isLocal: boolean
+  hostname: string
   globalBusy: boolean
   pausedCount: number
   onSelect: (id: string) => void
@@ -26,14 +27,16 @@ function ServiceItem({
   service,
   selectedId,
   running,
+  hostname,
   onSelect
 }: {
   service: ServiceConfig
   selectedId: string
   running: Record<string, boolean>
+  hostname: string
   onSelect: (id: string) => void
 }) {
-  const url = useFrontendUrl(service.frontendPort, !!running[service.id])
+  const url = useFrontendUrl(service.frontendPort, !!running[service.id], hostname)
 
   return (
     <button
@@ -43,7 +46,7 @@ function ServiceItem({
       className="relative flex items-center justify-between w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted data-selected:bg-muted"
     >
       <span className="absolute inset-0 flex items-center justify-center text-2xl font-bold text-muted-foreground/30 pointer-events-none select-none">
-        :{service.backendPort || ''}
+        {service.backendPort ? `:${service.backendPort}` : ''}
       </span>
       <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
         <span className="flex-1 truncate font-medium">{service.name || '未命名服务'}</span>
@@ -61,7 +64,9 @@ function ServiceItem({
         }
       >
         {running[service.id] ? '运行中' : '已停止'}
-        {url ? <ArrowUpRight className="size-3 ml-0.5" /> : null}
+        {running[service.id] && service.frontendPort ? (
+          <ArrowUpRight className="size-3 ml-0.5" />
+        ) : null}
       </Badge>
     </button>
   )
@@ -72,6 +77,7 @@ export default function ServiceList({
   selectedId,
   running,
   isLocal,
+  hostname,
   globalBusy,
   pausedCount,
   onSelect,
@@ -95,6 +101,7 @@ export default function ServiceList({
                 service={s}
                 selectedId={selectedId}
                 running={running}
+                hostname={hostname}
                 onSelect={onSelect}
               />
             ))}
@@ -123,14 +130,18 @@ export default function ServiceList({
         </div>
       </CardContent>
       <CardFooter className="mt-auto">
-        <Link
-          href={isLocal ? '/settings' : '#'}
-          className={`flex justify-center items-center gap-2 w-full rounded-lg px-3 py-2 text-sm transition-colors ${
-            isLocal ? 'hover:bg-muted' : 'opacity-50 cursor-not-allowed'
-          }`}
-        >
-          <Settings className="size-4" /> 全局设置
-        </Link>
+        {isLocal ? (
+          <Link
+            href="/settings"
+            className="flex justify-center items-center gap-2 w-full rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted"
+          >
+            <Settings className="size-4" /> 全局设置
+          </Link>
+        ) : (
+          <span className="flex justify-center items-center gap-2 w-full rounded-lg px-3 py-2 text-sm opacity-50 cursor-not-allowed">
+            <Settings className="size-4" /> 全局设置
+          </span>
+        )}
       </CardFooter>
     </Card>
   )

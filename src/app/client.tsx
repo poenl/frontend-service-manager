@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -54,13 +54,17 @@ export default function HomeClient({
   initialProjectDirs: projectDirs,
   initialRunning = {},
   initialLogs = {},
-  initialPausedCount = 0
+  initialPausedCount = 0,
+  initialIsLocal: isLocal = false,
+  initialHostname = ''
 }: {
   initialServices: ServiceConfig[]
   initialProjectDirs: ProjectDir[]
   initialRunning?: Record<string, boolean>
   initialLogs?: Record<string, string[]>
   initialPausedCount?: number
+  initialIsLocal?: boolean
+  initialHostname?: string
 }) {
   const [services, setServices] = useState<ServiceConfig[]>(initialServices)
   const [selectedId, setSelectedId] = useState(initialServices[0]?.id ?? '')
@@ -112,13 +116,9 @@ export default function HomeClient({
 
   const selected = services.find((s) => s.id === selectedId)
   const selectedDir = projectDirs.find((p) => p.path === selected?.projectDir)
-  const isLocal = useSyncExternalStore(
-    () => () => {},
-    () => window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
-    () => false
-  )
+  const isRunning = selectedId ? !!running[selectedId] : false
 
-  const frontendUrl = useFrontendUrl(selected?.frontendPort, !!running[selectedId])
+  const frontendUrl = useFrontendUrl(selected?.frontendPort, !!running[selectedId], initialHostname)
 
   const fieldErrors = selected
     ? {
@@ -279,6 +279,7 @@ export default function HomeClient({
         selectedId={selectedId}
         running={running}
         isLocal={isLocal}
+        hostname={initialHostname}
         globalBusy={globalBusy}
         pausedCount={pausedCount}
         onSelect={(id) => {
@@ -324,6 +325,7 @@ export default function HomeClient({
                   >
                     <SelectTrigger
                       className="w-full"
+                      disabled={isRunning}
                       aria-invalid={!!fieldErrors.projectDir || undefined}
                     >
                       <SelectValue placeholder="选择项目目录">
@@ -342,12 +344,14 @@ export default function HomeClient({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Link
-                    href="/settings"
-                    className="text-xs text-muted-foreground hover:text-foreground mt-0.5 inline-block"
-                  >
-                    管理项目目录 →
-                  </Link>
+                  {isLocal && (
+                    <Link
+                      href="/settings"
+                      className="text-xs text-muted-foreground hover:text-foreground mt-0.5 inline-block"
+                    >
+                      管理项目目录 →
+                    </Link>
+                  )}
                   <FieldError>{fieldErrors.projectDir}</FieldError>
                 </FieldContent>
               </Field>
@@ -364,6 +368,7 @@ export default function HomeClient({
                       onChange={(e) => handleBackendHostChange(selected.id, e.target.value)}
                       onBlur={() => setTouched((prev) => ({ ...prev, backendHost: true }))}
                       placeholder="hostname.local"
+                      disabled={isRunning}
                       aria-invalid={!!fieldErrors.backendHost || undefined}
                     />
                   </InputGroup>
@@ -378,6 +383,7 @@ export default function HomeClient({
                     onChange={(e) => handleBackendPortChange(selected.id, e.target.value)}
                     onBlur={() => setTouched((prev) => ({ ...prev, backendPort: true }))}
                     placeholder="80"
+                    disabled={isRunning}
                     aria-invalid={!!fieldErrors.backendPort || undefined}
                   />
                   <FieldError>{fieldErrors.backendPort}</FieldError>
@@ -392,6 +398,7 @@ export default function HomeClient({
                     onChange={(e) => handleFrontendPortChange(selected.id, e.target.value)}
                     onBlur={() => setTouched((prev) => ({ ...prev, frontendPort: true }))}
                     placeholder="80"
+                    disabled={isRunning}
                   />
                   <FieldError>{fieldErrors.frontendPort ?? frontendPortError}</FieldError>
                 </FieldContent>
@@ -443,14 +450,14 @@ export default function HomeClient({
                 {busy?.id === selected.id && busy?.action === 'stop' ? <Spinner /> : '■'} 停止
               </Button>
               <Separator orientation="vertical" className="h-6" />
-              {frontendUrl ? (
+              {isRunning && selected?.frontendPort ? (
                 <a
-                  href={frontendUrl}
+                  href={frontendUrl ?? '#'}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex h-5 items-center gap-1 rounded-4xl border border-transparent bg-primary px-2 py-0.5 text-xs font-medium whitespace-nowrap text-primary-foreground"
                 >
-                  {frontendUrl}
+                  {frontendUrl ?? `:${selected.frontendPort}`}
                 </a>
               ) : (
                 <Badge variant="secondary">○ 已停止</Badge>
