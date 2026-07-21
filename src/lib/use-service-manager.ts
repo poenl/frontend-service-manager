@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { sseClient } from '@/lib/sse-client'
 import { useSSE } from '@/lib/use-sse'
 import {
   createService,
@@ -12,7 +11,7 @@ import {
   resumeAllServices as apiResumeAll
 } from '@/lib/service-api'
 import { toast } from 'sonner'
-import { showNotification, requestPermission } from '@/lib/notification'
+import { showNotification } from '@/lib/notification'
 import type { ServiceConfig, ProjectDir } from '@/lib/config'
 
 interface UseServiceManagerOptions {
@@ -25,7 +24,6 @@ interface UseServiceManagerOptions {
 
 /**
  * 共享 hook：管理服务列表、运行状态、日志及所有 CRUD/操作
- * 每个路由页面各自维护独立的 SSE 连接和状态
  */
 export function useServiceManager({
   initialServices,
@@ -42,13 +40,6 @@ export function useServiceManager({
   const [busy, setBusy] = useState<{ id: string; action: 'start' | 'stop' } | null>(null)
   const [globalBusy, setGlobalBusy] = useState(false)
   const logEndRef = useRef<HTMLDivElement>(null)
-
-  // SSE 连接
-  useEffect(() => {
-    sseClient.connect()
-    requestPermission() // 静默请求通知权限，浏览器对重复请求不会弹窗
-    return () => sseClient.disconnect()
-  }, [])
 
   useSSE('snapshot', (snapshot: { id: string; running: boolean }[]) => {
     setRunning((prev) => {

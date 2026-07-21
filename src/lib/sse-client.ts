@@ -1,23 +1,23 @@
+import { requestPermission } from './notification'
+
 type EventCallback = (data: unknown) => void
 
+/**
+ * SSE 客户端单例
+ * - 首次 on() 调用时自动建立连接
+ * - 连接持续到页面卸载，浏览器自动关闭 EventSource
+ * - 消费方只需注册/注销事件，无需管理连接生命周期
+ */
 class SSEClient {
   private es: EventSource | null = null
   private listeners = new Map<string, Set<EventCallback>>()
   private nativeHandlers = new Map<string, (e: MessageEvent) => void>()
 
-  connect() {
+  private connect() {
     if (this.es) return
     this.es = new EventSource('/api/service/events')
     for (const event of this.listeners.keys()) this.attachNative(event)
-  }
-
-  disconnect() {
-    for (const [event, handler] of this.nativeHandlers) {
-      this.es?.removeEventListener(event, handler)
-    }
-    this.nativeHandlers.clear()
-    this.es?.close()
-    this.es = null
+    requestPermission()
   }
 
   on(event: string, cb: EventCallback) {
@@ -26,6 +26,7 @@ class SSEClient {
       if (this.es) this.attachNative(event)
     }
     this.listeners.get(event)!.add(cb)
+    if (!this.es) this.connect()
   }
 
   off(event: string, cb: EventCallback) {

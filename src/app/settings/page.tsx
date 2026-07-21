@@ -17,7 +17,6 @@ import {
   AlertDialogAction
 } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
-import { sseClient } from '@/lib/sse-client'
 import { useSSE } from '@/lib/use-sse'
 import {
   fetchProjectDirs,
@@ -52,12 +51,6 @@ export default function SettingsPage() {
         setLoading(false)
       }
     })()
-  }, [])
-
-  // SSR 连接：监听其他页面的 project-dirs 变更
-  useEffect(() => {
-    sseClient.connect()
-    return () => sseClient.disconnect()
   }, [])
 
   useSSE('project-dirs', (data: ProjectDir[]) => {
