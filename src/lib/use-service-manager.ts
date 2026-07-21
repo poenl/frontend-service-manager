@@ -12,6 +12,7 @@ import {
   resumeAllServices as apiResumeAll
 } from '@/lib/service-api'
 import { toast } from 'sonner'
+import { showNotification, requestPermission } from '@/lib/notification'
 import type { ServiceConfig } from '@/lib/config'
 
 interface UseServiceManagerOptions {
@@ -42,6 +43,7 @@ export function useServiceManager({
   // SSE 连接
   useEffect(() => {
     sseClient.connect()
+    requestPermission() // 静默请求通知权限，浏览器对重复请求不会弹窗
     return () => sseClient.disconnect()
   }, [])
 
@@ -56,6 +58,13 @@ export function useServiceManager({
   useSSE('status', ({ id, running: isRunning }: { id: string; running: boolean }) => {
     setRunning((prev) => ({ ...prev, [id]: isRunning }))
     if (isRunning) setLogs((prev) => ({ ...prev, [id]: [] }))
+
+    const service = services.find((s) => s.id === id)
+    if (service?.name) {
+      showNotification(isRunning ? '服务已启动' : '服务已停止', {
+        body: service.name
+      })
+    }
   })
 
   useSSE('log', ({ id, line }: { id: string; line: string }) => {
