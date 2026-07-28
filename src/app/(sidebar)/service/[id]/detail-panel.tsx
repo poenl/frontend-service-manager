@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter, useParams } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,50 +35,36 @@ import {
   AlertDialogFooter,
   AlertDialogCancel
 } from '@/components/ui/alert-dialog'
+import { Play, Square, Circle } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
-import type { ServiceConfig, ProjectDir } from '@/lib/config'
+import { useServiceStore } from '@/lib/service-store'
+import * as api from '@/lib/service-api'
 
-interface ServiceDetailPanelProps {
-  services: ServiceConfig[]
-  selectedId: string
-  running: Record<string, boolean>
-  logs: Record<string, string[]>
-  projectDirs: ProjectDir[]
-  hostname: string
-  busy: { id: string; action: 'start' | 'stop' } | null
-  logEndRef: React.RefObject<HTMLDivElement | null>
-  isLocal: boolean
-  onSave: (id: string, patch: Partial<ServiceConfig>) => void
-  onDelete: (id: string) => Promise<boolean>
-  onServiceAction: (id: string, action: 'start' | 'stop') => void
-}
+export default function ServiceDetailPanel() {
+  const router = useRouter()
+  const params = useParams<{ id: string }>()
+  const selectedId = params?.id ?? ''
 
-/**
- * 右侧详情面板：服务配置 + 服务控制 + 运行日志
- * 无状态组件，所有数据和回调均由父组件传入
- */
-export default function ServiceDetailPanel({
-  services,
-  selectedId,
-  running,
-  logs,
-  projectDirs,
-  hostname,
-  busy,
-  logEndRef,
-  isLocal,
-  onSave,
-  onDelete,
-  onServiceAction
-}: ServiceDetailPanelProps) {
+  const services = useServiceStore((s) => s.services)
+  const projectDirs = useServiceStore((s) => s.projectDirs)
+  const running = useServiceStore((s) => s.running)
+  const logs = useServiceStore((s) => s.logs)
+  const hostname = useServiceStore((s) => s.hostname)
+  const isLocal = useServiceStore((s) => s.isLocal)
+
   const [frontendPortError, setFrontendPortError] = useState<string | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [busy, setBusy] = useState<{ id: string; action: 'start' | 'stop' } | null>(null)
+  const logEndRef = useRef<HTMLDivElement>(null)
 
   const selected = services.find((s) => s.id === selectedId)
-  // Hooks 必须在条件返回前调用
   const frontendUrl = useFrontendUrl(selected?.frontendPort, !!running[selectedId], hostname)
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
 
   if (!selected) return null
 
@@ -92,18 +79,17 @@ export default function ServiceDetailPanel({
     frontendPort: touched.frontendPort && !selected.frontendPort ? '请输入前端端口' : null
   }
 
-  // 后端地址输入处理：清洗 http:// 前缀，自动提取端口
   const handleBackendHostChange = (id: string, value: string) => {
     const raw = value.replace(/^https?:\/\//, '')
     const match = raw.match(/^(.+?):(\d+)$/)
+    const patch: Record<string, string> = { backendHost: raw }
     if (match) {
-      onSave(id, { backendHost: match[1], backendPort: match[2] })
-    } else {
-      onSave(id, { backendHost: raw })
+      patch.backendHost = match[1]
+      patch.backendPort = match[2]
     }
+    api.updateService(id, patch)
   }
 
-  // 前端端口输入处理：禁止与本项目端口冲突，禁止与其他服务重复
   const handleFrontendPortChange = (id: string, value: string) => {
     const clean = value.replace(/\D/g, '')
     const currentPort = window.location.port
@@ -119,11 +105,36 @@ export default function ServiceDetailPanel({
     }
 
     setFrontendPortError(error)
-    onSave(id, { frontendPort: clean })
+    api.updateService(id, { frontendPort: clean })
+  }
+
+  const handleDelete = async () => {
+    setIsDeleting(true)
+    try {
+      await api.removeService(selected.id)
+      router.push('/')
+    } catch {
+      /* ignore */
+    } finally {
+      setIsDeleting(false)
+      setDeleteOpen(false)
+    }
+  }
+
+  const handleServiceAction = async (id: string, action: 'start' | 'stop') => {
+    if (action === 'stop' && !running[id]) return
+    setBusy({ id, action })
+    try {
+      await api.operateService(id, action)
+    } catch {
+      /* ignore */
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (
-    <div className="flex-1 flex flex-col gap-4 min-w-0">
+    <div className="h-full flex-1 flex flex-col gap-4 min-w-0">
       {/* 服务配置 */}
       <Card>
         <CardHeader>
@@ -135,7 +146,7 @@ export default function ServiceDetailPanel({
             <FieldContent>
               <Input
                 value={selected.name}
-                onChange={(e) => onSave(selected.id, { name: e.target.value })}
+                onChange={(e) => api.updateService(selected.id, { name: e.target.value })}
                 onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
                 placeholder="服务名称"
                 aria-invalid={!!fieldErrors.name || undefined}
@@ -149,7 +160,7 @@ export default function ServiceDetailPanel({
               <Select
                 value={selected.projectDir || null}
                 onValueChange={(value) => {
-                  onSave(selected.id, { projectDir: value ?? '' })
+                  api.updateService(selected.id, { projectDir: value ?? '' })
                   setTouched((prev) => ({ ...prev, projectDir: true }))
                 }}
               >
@@ -211,7 +222,7 @@ export default function ServiceDetailPanel({
               <Input
                 value={selected.backendPort}
                 onChange={(e) =>
-                  onSave(selected.id, { backendPort: e.target.value.replace(/\D/g, '') })
+                  api.updateService(selected.id, { backendPort: e.target.value.replace(/\D/g, '') })
                 }
                 onBlur={() => setTouched((prev) => ({ ...prev, backendPort: true }))}
                 placeholder="80"
@@ -250,16 +261,7 @@ export default function ServiceDetailPanel({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
-                <Button
-                  variant="destructive"
-                  disabled={isDeleting}
-                  onClick={async () => {
-                    setIsDeleting(true)
-                    await onDelete(selected.id)
-                    setIsDeleting(false)
-                    setDeleteOpen(false)
-                  }}
-                >
+                <Button variant="destructive" disabled={isDeleting} onClick={handleDelete}>
                   {isDeleting && <Spinner />}
                   删除
                 </Button>
@@ -276,17 +278,27 @@ export default function ServiceDetailPanel({
         </CardHeader>
         <CardContent className="flex items-center gap-3">
           <Button
-            onClick={() => onServiceAction(selected.id, 'start')}
+            onClick={() => handleServiceAction(selected.id, 'start')}
             disabled={busy?.id === selected.id || Object.values(fieldErrors).some(Boolean)}
           >
-            {busy?.id === selected.id && busy?.action === 'start' ? <Spinner /> : '▶'} 启动
+            {busy?.id === selected.id && busy?.action === 'start' ? (
+              <Spinner />
+            ) : (
+              <Play className="size-4" />
+            )}{' '}
+            启动
           </Button>
           <Button
             variant="secondary"
-            onClick={() => onServiceAction(selected.id, 'stop')}
+            onClick={() => handleServiceAction(selected.id, 'stop')}
             disabled={busy?.id === selected.id}
           >
-            {busy?.id === selected.id && busy?.action === 'stop' ? <Spinner /> : '■'} 停止
+            {busy?.id === selected.id && busy?.action === 'stop' ? (
+              <Spinner />
+            ) : (
+              <Square className="size-4" />
+            )}{' '}
+            停止
           </Button>
           <Separator orientation="vertical" className="h-6" />
           {isRunning && selected.frontendPort ? (
@@ -299,7 +311,9 @@ export default function ServiceDetailPanel({
               {frontendUrl ?? `:${selected.frontendPort}`}
             </a>
           ) : (
-            <Badge variant="secondary">○ 已停止</Badge>
+            <Badge variant="secondary">
+              <Circle className="size-3" /> 已停止
+            </Badge>
           )}
         </CardContent>
       </Card>

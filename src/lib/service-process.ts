@@ -18,17 +18,6 @@ if (!_g.__pausedServices) _g.__pausedServices = new Set()
 const processes = _g.__processes
 const pausedServices = _g.__pausedServices
 
-function cleanup() {
-  const ids = [...processes.keys()]
-  for (const id of ids) {
-    stopService(id)
-  }
-}
-
-process.on('SIGTERM', cleanup)
-process.on('SIGINT', cleanup)
-process.on('exit', cleanup)
-
 function detectPm(cwd: string): string {
   if (existsSync(join(cwd, 'pnpm-lock.yaml'))) return 'pnpm'
   if (existsSync(join(cwd, 'yarn.lock'))) return 'yarn'
@@ -79,11 +68,13 @@ export async function startService(id: string): Promise<{ success: boolean; mess
 
   const pm = detectPm(cwd)
   const args = [pm === 'npx' ? 'vite' : 'vite']
+  args.push('--no-open')
   if (config.frontendPort) args.push('--port', config.frontendPort)
 
   const env = {
     ...process.env,
     FORCE_COLOR: '1',
+    NODE_ENV: 'development',
     VITE_APP_BASE_URL:
       config.backendHost && config.backendPort
         ? `http://${config.backendHost}:${config.backendPort}`

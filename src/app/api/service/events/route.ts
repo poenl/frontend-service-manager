@@ -53,18 +53,12 @@ export async function GET(req: Request) {
       eventBus.on('services', onServices)
       eventBus.on('project-dirs', onProjectDirs)
 
-      // 30s 心跳保活
-      const keepalive = setInterval(() => {
-        controller.enqueue(encoder.encode(': keepalive\n\n'))
-      }, 30000)
-
       req.signal.addEventListener('abort', () => {
         eventBus.off('status', onStatus)
         eventBus.off('log', onLog)
         eventBus.off('paused', onPaused)
         eventBus.off('services', onServices)
         eventBus.off('project-dirs', onProjectDirs)
-        clearInterval(keepalive)
       })
     }
   })
