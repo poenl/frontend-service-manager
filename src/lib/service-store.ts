@@ -1,7 +1,7 @@
 'use client'
 
-import { createContext, useContext } from 'react'
-import { createStore, useStore } from 'zustand'
+import { createContext, useContext, useSyncExternalStore } from 'react'
+import { createStore } from 'zustand'
 import { sseClient } from './sse-client'
 import type { ServiceConfig, ProjectDir } from './config'
 
@@ -27,8 +27,13 @@ export interface ServiceState {
 
 export type ServiceStore = ReturnType<typeof createServiceStore>
 
-export function createServiceStore(initial: ServiceInitialData) {
-  return createStore<ServiceState>()(() => ({
+export function createServiceStore(state: ServiceState) {
+  return createStore<ServiceState>()(() => state)
+}
+
+// initialData 派生为完整 ServiceState（不可变），供 SSR 渲染与 hydration 首帧使用
+export function toServiceState(initial: ServiceInitialData): ServiceState {
+  return {
     services: initial.services ?? [],
     projectDirs: initial.projectDirs ?? [],
     running: initial.running ?? {},
@@ -36,19 +41,29 @@ export function createServiceStore(initial: ServiceInitialData) {
     pausedCount: initial.pausedCount ?? 0,
     isLocal: initial.isLocal ?? false,
     hostname: initial.hostname ?? ''
-  }))
+  }
+}
+
+// store 单例：首次用 initialData 创建，之后跨导航复用，保证订阅常驻写入同一实例
+let storeInstance: ServiceStore | null = null
+
+export function getServiceStore(initial: ServiceInitialData): ServiceStore {
+  if (!storeInstance) storeInstance = createServiceStore(toServiceState(initial))
+  return storeInstance
 }
 
 let _subscribed = false
 
-export function subscribeSSE(store: ServiceStore) {
+// 常驻订阅：回调闭包引用模块级 storeInstance，注册一次不注销
+// 页面在 /settings 停留期间事件持续写入 store，跳回后无需重新订阅也不丢消息
+export function subscribeSSE() {
   if (typeof window === 'undefined') return
   if (_subscribed) return
   _subscribed = true
 
   sseClient.on('snapshot', (data: unknown) => {
     const snapshot = data as { id: string; running: boolean }[]
-    store.setState((s) => {
+    storeInstance?.setState((s) => {
       const running = { ...s.running }
       for (const svc of snapshot) running[svc.id] = svc.running
       return { running }
@@ -57,7 +72,7 @@ export function subscribeSSE(store: ServiceStore) {
 
   sseClient.on('status', (data: unknown) => {
     const { id, running: isRunning } = data as { id: string; running: boolean }
-    store.setState((s) => {
+    storeInstance?.setState((s) => {
       const logs = isRunning ? { ...s.logs, [id]: [] } : s.logs
       return { running: { ...s.running, [id]: isRunning }, logs }
     })
@@ -65,7 +80,7 @@ export function subscribeSSE(store: ServiceStore) {
 
   sseClient.on('log', (data: unknown) => {
     const { id, line } = data as { id: string; line: string }
-    store.setState((s) => {
+    storeInstance?.setState((s) => {
       const current = s.logs[id] ?? []
       return { logs: { ...s.logs, [id]: [...current, line] } }
     })
@@ -73,22 +88,28 @@ export function subscribeSSE(store: ServiceStore) {
 
   sseClient.on('paused', (data: unknown) => {
     const { pausedCount } = data as { pausedCount: number }
-    store.setState({ pausedCount })
+    storeInstance?.setState({ pausedCount })
   })
 
   sseClient.on('services', (data: unknown) => {
-    store.setState({ services: data as ServiceConfig[] })
-  })
-
-  sseClient.on('project-dirs', (data: unknown) => {
-    store.setState({ projectDirs: data as ProjectDir[] })
+    storeInstance?.setState({ services: data as ServiceConfig[] })
   })
 }
 
 export const ServiceStoreContext = createContext<ServiceStore | null>(null)
 
+// initialData 派生的不可变快照，供 SSR 渲染与 hydration 首帧匹配使用
+export const ServerSnapshotContext = createContext<ServiceState | null>(null)
+
 export function useServiceStore<Sel>(selector: (state: ServiceState) => Sel): Sel {
   const store = useContext(ServiceStoreContext)
-  if (!store) throw new Error('useServiceStore must be used within ServiceStoreProvider')
-  return useStore(store, selector)
+  const server = useContext(ServerSnapshotContext)
+  if (!store || !server) throw new Error('useServiceStore must be used within ServiceStoreProvider')
+  // SSR 渲染与 hydration 首帧用 server 快照，与 server HTML 保持一致；
+  // hydration 提交后切换实时 store，避免 SSE 实时数据污染首帧导致 hydration mismatch
+  return useSyncExternalStore(
+    store.subscribe,
+    () => selector(store.getState()),
+    () => selector(server)
+  )
 }

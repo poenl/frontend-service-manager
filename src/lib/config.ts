@@ -14,9 +14,20 @@ export interface ProjectDir {
   path: string
 }
 
+export interface ScheduleConfig {
+  enabled: boolean
+  pauseTime: string
+  resumeTime: string
+  autoResume: boolean
+  reminderEnabled: boolean
+  reminderMinutes: number
+}
+
 interface Store {
   services: ServiceConfig[]
   projectDirs: ProjectDir[]
+  schedule: ScheduleConfig
+  skipPauseDate?: string
 }
 
 let _store: Conf<Store> | null = null
@@ -25,7 +36,18 @@ function store(): Conf<Store> {
   if (!_store) {
     _store = new Conf<Store>({
       projectName: 'frontend-service-manager',
-      defaults: { services: [], projectDirs: [] }
+      defaults: {
+        services: [],
+        projectDirs: [],
+        schedule: {
+          enabled: false,
+          pauseTime: '18:00',
+          resumeTime: '09:00',
+          autoResume: true,
+          reminderEnabled: false,
+          reminderMinutes: 30
+        }
+      }
     })
   }
   return _store
@@ -109,4 +131,31 @@ export function updateProjectDir(
   updated[idx] = { ...updated[idx], ...data, path: newPath }
   store().set('projectDirs', updated)
   return updated
+}
+
+const SCHEDULE_DEFAULTS: Pick<ScheduleConfig, 'reminderEnabled' | 'reminderMinutes'> = {
+  reminderEnabled: false,
+  reminderMinutes: 30
+}
+
+export function getSchedule(): ScheduleConfig {
+  return { ...SCHEDULE_DEFAULTS, ...store().get('schedule') }
+}
+
+export function setSchedule(config: ScheduleConfig): ScheduleConfig {
+  store().set('schedule', config)
+  return config
+}
+
+export function getSkipPauseDate(): string | undefined {
+  return store().get('skipPauseDate')
+}
+
+export function setSkipPauseDate(date: string | undefined) {
+  // conf 的 set() 传 undefined 会抛错，清除值需用 delete()
+  if (date === undefined) {
+    store().delete('skipPauseDate')
+  } else {
+    store().set('skipPauseDate', date)
+  }
 }

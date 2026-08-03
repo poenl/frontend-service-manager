@@ -1,4 +1,4 @@
-import type { ProjectDir } from '@/lib/config'
+import type { ProjectDir, ScheduleConfig } from '@/lib/config'
 
 const BASE = '/api/settings/project-dirs'
 
@@ -32,5 +32,19 @@ export async function updateProjectDir(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ oldPath, ...data })
+  })
+}
+
+const SCHEDULE_BASE = '/api/settings/schedule'
+
+export async function fetchSchedule(): Promise<ScheduleConfig> {
+  return request(SCHEDULE_BASE)
+}
+
+export async function updateSchedule(data: ScheduleConfig): Promise<ScheduleConfig> {
+  return request(SCHEDULE_BASE, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
   })
 }
