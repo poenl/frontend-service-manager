@@ -1,12 +1,7 @@
 import type { ProjectDir, ScheduleConfig } from '@/lib/config'
+import { request } from '@/lib/http'
 
 const BASE = '/api/settings/project-dirs'
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
 
 export async function fetchProjectDirs(): Promise<ProjectDir[]> {
   return request(BASE)

@@ -45,26 +45,28 @@ function isPortInUse(port: number): Promise<boolean> {
   })
 }
 
-export async function startService(id: string): Promise<{ success: boolean; message: string }> {
+export async function startService(
+  id: string
+): Promise<{ success: boolean; message: string; status?: number }> {
   const config = getService(id)
-  if (!config) return { success: false, message: '服务不存在' }
-  if (!config.projectDir) return { success: false, message: '请填写项目目录' }
-  if (!config.backendHost) return { success: false, message: '请填写后端地址' }
-  if (!config.backendPort) return { success: false, message: '请填写后端端口' }
-  if (!config.frontendPort) return { success: false, message: '请填写前端端口' }
+  if (!config) return { success: false, message: '服务不存在', status: 404 }
+  if (!config.projectDir) return { success: false, message: '请填写项目目录', status: 400 }
+  if (!config.backendHost) return { success: false, message: '请填写后端地址', status: 400 }
+  if (!config.backendPort) return { success: false, message: '请填写后端端口', status: 400 }
+  if (!config.frontendPort) return { success: false, message: '请填写前端端口', status: 400 }
   if (await isPortInUse(parseInt(config.frontendPort, 10))) {
-    return { success: false, message: `端口 ${config.frontendPort} 已被其他进程占用` }
+    return { success: false, message: `端口 ${config.frontendPort} 已被其他进程占用`, status: 409 }
   }
   if (processes.has(id)) {
     const existing = processes.get(id)!
     if (existing.proc.exitCode === null && existing.proc.signalCode === null)
-      return { success: false, message: '服务已在运行' }
+      return { success: false, message: '服务已在运行', status: 409 }
     existing.logs.length = 0
     existing.startTime = Date.now()
   }
 
   const cwd = config.projectDir.replace(/^~(?=\/|$)/, homedir())
-  if (!cwd || !existsSync(cwd)) return { success: false, message: '项目目录不存在' }
+  if (!cwd || !existsSync(cwd)) return { success: false, message: '项目目录不存在', status: 422 }
 
   const pm = detectPm(cwd)
   const args = [pm === 'npx' ? 'vite' : 'vite']
@@ -127,29 +129,31 @@ export async function startService(id: string): Promise<{ success: boolean; mess
     tryEmitStatus(false)
   })
 
-  const result = await new Promise<{ success: boolean; message: string }>((resolve) => {
-    const timeout = setTimeout(() => {
-      resolve({ success: false, message: '启动超时（15s）' })
-    }, 15000)
+  const result = await new Promise<{ success: boolean; message: string; status?: number }>(
+    (resolve) => {
+      const timeout = setTimeout(() => {
+        resolve({ success: false, message: '启动超时（15s）', status: 504 })
+      }, 15000)
 
-    const onOutput = () => {
-      clearTimeout(timeout)
-      resolve({ success: true, message: '服务已启动' })
+      const onOutput = () => {
+        clearTimeout(timeout)
+        resolve({ success: true, message: '服务已启动' })
+      }
+
+      child.stdout?.once('data', onOutput)
+      child.stderr?.once('data', onOutput)
+
+      child.on('exit', (code) => {
+        clearTimeout(timeout)
+        resolve({ success: false, message: `进程异常退出 (code: ${code})`, status: 502 })
+      })
+
+      child.on('error', (err) => {
+        clearTimeout(timeout)
+        resolve({ success: false, message: `启动失败: ${err.message}`, status: 500 })
+      })
     }
-
-    child.stdout?.once('data', onOutput)
-    child.stderr?.once('data', onOutput)
-
-    child.on('exit', (code) => {
-      clearTimeout(timeout)
-      resolve({ success: false, message: `进程异常退出 (code: ${code})` })
-    })
-
-    child.on('error', (err) => {
-      clearTimeout(timeout)
-      resolve({ success: false, message: `启动失败: ${err.message}` })
-    })
-  })
+  )
 
   if (result.success) {
     const entry = processes.get(id)
@@ -174,9 +178,11 @@ export async function startService(id: string): Promise<{ success: boolean; mess
   return result
 }
 
-export async function stopService(id: string): Promise<{ success: boolean; message: string }> {
+export async function stopService(
+  id: string
+): Promise<{ success: boolean; message: string; status?: number }> {
   const entry = processes.get(id)
-  if (!entry) return { success: false, message: '服务未在运行' }
+  if (!entry) return { success: false, message: '服务未在运行', status: 409 }
 
   const { proc } = entry
   proc.kill('SIGTERM')

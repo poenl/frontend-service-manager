@@ -43,7 +43,7 @@ export default function ProjectDirsPanel() {
         const data = await fetchProjectDirs()
         setDirs(data)
       } catch {
-        toast.add({ type: 'error', title: '加载项目目录失败' })
+        // 错误提示已由 request 工具统一处理
       } finally {
         setLoading(false)
       }
@@ -64,7 +64,7 @@ export default function ProjectDirsPanel() {
       setNewName('')
       setNewPath('')
     } catch {
-      toast.add({ type: 'error', title: '添加失败' })
+      // 错误提示已由 request 工具统一处理
     }
   }
 
@@ -73,7 +73,7 @@ export default function ProjectDirsPanel() {
       const updated = await removeProjectDir(path)
       setDirs(updated)
     } catch {
-      toast.add({ type: 'error', title: '删除失败' })
+      // 错误提示已由 request 工具统一处理
     }
   }
 
@@ -91,7 +91,7 @@ export default function ProjectDirsPanel() {
       setDirs(updated)
       setEditingPath(null)
     } catch {
-      toast.add({ type: 'error', title: '编辑失败' })
+      // 错误提示已由 request 工具统一处理
     }
   }
 

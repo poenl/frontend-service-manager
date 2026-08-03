@@ -30,7 +30,7 @@ export default function SchedulePanel() {
         const data = await fetchSchedule()
         setSchedule(data)
       } catch {
-        toast.add({ type: 'error', title: '加载定时设置失败' })
+        // 错误提示已由 request 工具统一处理
       } finally {
         setLoading(false)
       }
@@ -55,7 +55,7 @@ export default function SchedulePanel() {
         toast.add({ type: 'success', title: '定时暂停设置已保存' })
       }, 0)
     } catch {
-      toast.add({ type: 'error', title: '保存失败' })
+      // 错误提示已由 request 工具统一处理
     }
   }
 

@@ -1,12 +1,7 @@
 import type { ServiceConfig } from '@/lib/config'
+import { request } from '@/lib/http'
 
 const BASE = '/api/service'
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json()
-}
 
 export async function fetchServices(): Promise<ServiceConfig[]> {
   return request(BASE)
@@ -32,7 +27,7 @@ export async function updateService(
 }
 
 export async function removeService(id: string): Promise<void> {
-  await fetch(`${BASE}/${id}`, { method: 'DELETE' })
+  await request(`${BASE}/${id}`, { method: 'DELETE' })
 }
 
 export async function operateService(
