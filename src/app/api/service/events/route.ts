@@ -1,5 +1,5 @@
 import { getServices } from '@/lib/config'
-import { getServiceStatus } from '@/lib/service-process'
+import { getServiceStatus, getServiceLogs, getPausedCount } from '@/lib/service-process'
 import { eventBus } from '@/lib/service-events'
 
 export const dynamic = 'force-dynamic'
@@ -9,12 +9,17 @@ export async function GET(req: Request) {
 
   const stream = new ReadableStream({
     start(controller) {
-      // 发送初始快照：所有服务的当前状态
+      // 发送初始快照：完整服务端状态（services/running/logs/pausedCount）
+      // 每次连接（含 EventSource 重连）都整体推送，客户端在 snapshot 时整体替换，
+      // 确保断连期间的日志、暂停计数、配置变更在重连后完整恢复
       const services = getServices()
-      const snapshot = services.map((s) => ({
-        id: s.id,
-        ...getServiceStatus(s.id)
-      }))
+      const running: Record<string, boolean> = {}
+      const logs: Record<string, string[]> = {}
+      for (const s of services) {
+        running[s.id] = getServiceStatus(s.id).running
+        logs[s.id] = getServiceLogs(s.id).logs
+      }
+      const snapshot = { services, running, logs, pausedCount: getPausedCount() }
       controller.enqueue(encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`))
 
       // 监听实时事件

@@ -62,12 +62,15 @@ export function subscribeSSE() {
   _subscribed = true
 
   sseClient.on('snapshot', (data: unknown) => {
-    const snapshot = data as { id: string; running: boolean }[]
-    storeInstance?.setState((s) => {
-      const running = { ...s.running }
-      for (const svc of snapshot) running[svc.id] = svc.running
-      return { running }
-    })
+    // snapshot 携带完整服务端状态，整体替换而非合并，
+    // 保证每次连接（含断线重连）后与服务端完全一致
+    const { services, running, logs, pausedCount } = data as {
+      services: ServiceConfig[]
+      running: Record<string, boolean>
+      logs: Record<string, string[]>
+      pausedCount: number
+    }
+    storeInstance?.setState({ services, running, logs, pausedCount })
   })
 
   sseClient.on('status', (data: unknown) => {
