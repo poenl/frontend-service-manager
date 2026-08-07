@@ -1,7 +1,8 @@
-// 中国工作日判断工具：从 jsdelivr CDN 拉取 chinese-days 的年度 ics，解析「休/班」事件
-// 数据源：https://cdn.jsdelivr.net/npm/chinese-days/dist/years/{year}.ics
+// 中国工作日判断工具：从 jsdelivr CDN 拉取 chinese-days 的年度 json，取「休/班」日期
+// 数据源：https://cdn.jsdelivr.net/npm/chinese-days/dist/years/{year}.json
+import { getWorkdayCache, setWorkdayCache } from '@/lib/config'
 
-const ICS_BASE = 'https://cdn.jsdelivr.net/npm/chinese-days/dist/years/{year}.ics'
+const JSON_BASE = 'https://cdn.jsdelivr.net/npm/chinese-days/dist/years/{year}.json'
 const FETCH_TIMEOUT_MS = 5000
 
 // 节假日（休）与调休上班日（班）的日期集合，key 形如 YYYY-MM-DD
@@ -10,28 +11,21 @@ let workdays = new Set<string>()
 let loadedYear: number | null = null
 let loading: Promise<void> | null = null
 
+// 启动时从本地缓存恢复当年数据（一次拉取即全年数据，重启后无需重复请求）
+{
+  const cache = getWorkdayCache()
+  const year = new Date().getFullYear()
+  if (cache && cache.year === year) {
+    holidays = new Set(cache.holidays)
+    workdays = new Set(cache.workdays)
+    loadedYear = year
+  }
+}
+
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
     date.getDate()
   ).padStart(2, '0')}`
-}
-
-// 解析 ics 文本，将每个 VEVENT 的「休/班」区间展开为日期集合
-function parseIcs(text: string) {
-  const events = text.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) ?? []
-  for (const ev of events) {
-    const start = ev.match(/DTSTART;VALUE=DATE:(\d{4})(\d{2})(\d{2})/)
-    const end = ev.match(/DTEND;VALUE=DATE:(\d{4})(\d{2})(\d{2})/)
-    if (!start || !end) continue
-
-    const isWork = /DESCRIPTION:班/.test(ev)
-    const target = isWork ? workdays : holidays
-    const startTime = new Date(+start[1], +start[2] - 1, +start[3]).getTime()
-    const endTime = new Date(+end[1], +end[2] - 1, +end[3]).getTime()
-    for (let t = startTime; t < endTime; t += 86400000) {
-      target.add(dateKey(new Date(t)))
-    }
-  }
 }
 
 // 拉取指定年份数据并解析，进程内缓存；失败时降级为纯周末判断
@@ -41,15 +35,23 @@ async function loadYear(year: number): Promise<void> {
 
   loading = (async () => {
     try {
-      const res = await fetch(ICS_BASE.replace('{year}', String(year)), {
+      const res = await fetch(JSON_BASE.replace('{year}', String(year)), {
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
       })
-      if (!res.ok) throw new Error(`ics fetch failed: ${res.status}`)
-      const text = await res.text()
-      holidays = new Set()
-      workdays = new Set()
-      parseIcs(text)
+      if (!res.ok) throw new Error(`json fetch failed: ${res.status}`)
+      const data = (await res.json()) as {
+        holidays: Record<string, unknown>
+        workdays: Record<string, unknown>
+      }
+      holidays = new Set(Object.keys(data.holidays))
+      workdays = new Set(Object.keys(data.workdays))
       loadedYear = year
+      try {
+        // 全年数据持久化到本地，重启后无需重新拉取；写入失败不影响本次判断
+        setWorkdayCache({ year, holidays: [...holidays], workdays: [...workdays] })
+      } catch {
+        /* swallow */
+      }
     } catch (err) {
       // 保持未加载状态，后续调用继续尝试；期间按周末判断兜底
       console.error('[workday] 拉取节假日数据失败，降级为周末判断', err)

@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { toast } from '@/components/ui/toast'
 import { fetchSchedule, updateSchedule } from '@/lib/settings-api'
-import { useScheduleStore } from '@/lib/schedule-store'
 import type { ScheduleConfig } from '@/lib/config'
 
 const DEFAULT_SCHEDULE: ScheduleConfig = {
@@ -41,19 +40,8 @@ export default function SchedulePanel() {
     try {
       const updated = await updateSchedule(schedule)
       setSchedule(updated)
-      // 更新全局暂停配置，让所有页面的提醒立即按新配置评估
-      useScheduleStore.getState().setSchedule({
-        enabled: updated.enabled,
-        pauseTime: updated.pauseTime,
-        reminderEnabled: updated.reminderEnabled,
-        reminderMinutes: updated.reminderMinutes
-      })
-      // 配置更改即重新评估今天，同会话内还原跳过状态
-      useScheduleStore.getState().restoreToday()
-      // 确保保存成功显示在暂停提醒之前
-      setTimeout(() => {
-        toast.add({ type: 'success', title: '定时暂停设置已保存' })
-      }, 0)
+      // 配置保存后由后端重算提醒状态并经 SSE 广播，前端无需再同步全局状态
+      toast.add({ type: 'success', title: '定时暂停设置已保存' })
     } catch {
       // 错误提示已由 request 工具统一处理
     }

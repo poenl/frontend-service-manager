@@ -1,50 +1,35 @@
 'use client'
 
-import { useEffect } from 'react'
 import { toast } from '@/components/ui/toast'
-import { useScheduleStore, type ScheduleState } from '@/lib/schedule-store'
+import { useSSE } from '@/lib/use-sse'
+import type { ReminderState } from '@/lib/schedule'
 
-// 保存当前提醒 toast 的 id 及其自动关闭定时器，供更新与清理使用（替代硬编码 id）
+// 保存当前提醒 toast 的 id，供更新与清理使用（替代硬编码 id）
 let reminderToastId: string | null = null
-let reminderCloseTimer: ReturnType<typeof setTimeout> | null = null
 
-// 到暂停时刻自动关闭 toast；重排前先清旧定时器。
-// 若 toast 已被 effect 清空重建，检查 id 不匹配则不误关新 toast
-function scheduleAutoClose(id: string, remaining: number) {
-  if (reminderCloseTimer) clearTimeout(reminderCloseTimer)
-  reminderCloseTimer = setTimeout(() => {
-    if (reminderToastId === id) {
-      toast.close(id)
-      reminderToastId = null
-    }
-  }, remaining)
+// 关闭当前提醒 toast 并置空
+function closeReminderToast() {
+  if (reminderToastId) {
+    toast.close(reminderToastId)
+    reminderToastId = null
+  }
 }
 
-// 在暂停时刻弹提醒 toast，到暂停时刻自动关闭。
-// 未跳过时初始显示「跳过」，已跳过时初始显示「还原」，跳过/还原都在同一条 toast 上切换
-function showReminderToast(pauseTime: string, initialSkipped: boolean) {
-  const { enabled, reminderEnabled, reminderMinutes } = useScheduleStore.getState()
-  const [h, m] = pauseTime.split(':').map(Number)
-  const pause = new Date()
-  pause.setHours(h, m, 0, 0)
-  const now = Date.now()
-  const remaining = pause.getTime() - now
-  // 配置关闭、暂停已过或不在提醒窗口（暂停前 reminderMinutes 分钟）内：不弹也不更新
-  if (
-    !enabled ||
-    !reminderEnabled ||
-    remaining <= 0 ||
-    now < pause.getTime() - reminderMinutes * 60000
-  )
+// 根据后端推送的提醒状态弹/更新/关闭 toast：
+// 未跳过显示「服务将暂停 + 跳过」，已跳过显示「已跳过 + 还原」，不在窗口内则关闭
+function handleReminder(state: ReminderState) {
+  const shouldShow = state.inWindow && state.enabled && state.reminderEnabled && state.isWorkday
+  if (!shouldShow) {
+    closeReminderToast()
     return
+  }
 
-  // 跳过：请求中 loading，成功后更新同一条 toast 为「已跳过 + 还原」
+  // 跳过：请求中 loading，成功后更新同一条 toast 为「已跳过 + 还原」。
+  // 后端会广播新状态，本页即时更新让反馈无延迟，其他标签页经广播同步
   const handleSkip = async () => {
     if (reminderToastId) toast.update(reminderToastId, { type: 'loading' })
     try {
       await fetch('/api/service/skip-pause', { method: 'POST' })
-      // 标记今天已跳过，抑制窗口内的重复提醒
-      useScheduleStore.getState().skipToday()
       if (reminderToastId) {
         toast.update(reminderToastId, {
           type: 'info',
@@ -62,11 +47,10 @@ function showReminderToast(pauseTime: string, initialSkipped: boolean) {
     if (reminderToastId) toast.update(reminderToastId, { type: 'loading' })
     try {
       await fetch('/api/service/unskip-pause', { method: 'POST' })
-      useScheduleStore.getState().restoreToday()
       if (reminderToastId) {
         toast.update(reminderToastId, {
           type: 'loading',
-          title: `服务将在 ${pauseTime} 暂停`,
+          title: `服务将在 ${state.pauseTime} 暂停`,
           actionProps: { children: '跳过', onClick: handleSkip }
         })
       }
@@ -75,92 +59,32 @@ function showReminderToast(pauseTime: string, initialSkipped: boolean) {
     }
   }
 
-  const title = initialSkipped ? '已跳过今天的暂停' : `服务将在 ${pauseTime} 暂停`
-  const actionProps = initialSkipped
+  const title = state.skippedToday ? '已跳过今天的暂停' : `服务将在 ${state.pauseTime} 暂停`
+  const actionProps = state.skippedToday
     ? { children: '还原', onClick: handleRestore }
     : { children: '跳过', onClick: handleSkip }
 
   if (reminderToastId) {
-    // 已有 toast（pauseTime/skippedToday 变化）：更新标题与按钮，并重排自动关闭时刻
+    // 状态变化（如 skippedToday 变化）：更新同一条 toast
     toast.update(reminderToastId, {
       // 未跳过用 loading 图标（等待暂停中），已跳过用 info 图标区分
-      type: initialSkipped ? 'info' : 'loading',
+      type: state.skippedToday ? 'info' : 'loading',
       title,
       actionProps
     })
-    scheduleAutoClose(reminderToastId, remaining)
   } else {
-    const id = toast.add({
-      type: initialSkipped ? 'info' : 'loading',
+    reminderToastId = toast.add({
+      // 显式声明 low 优先级：作为后台提醒礼貌通知，不打断用户当前操作（base-ui 默认即 low）
+      priority: 'low',
+      type: state.skippedToday ? 'info' : 'loading',
       title,
-      timeout: remaining,
       actionProps
     })
-    reminderToastId = id
-    // base-ui 对 loading 类型 toast 不自动关闭（add/update 均不启动 timer），需手动定时到暂停时刻关闭
-    scheduleAutoClose(id, remaining)
   }
 }
 
-// 常驻提醒组件：挂在 root layout，所有页面共享全局暂停配置并在进入提醒窗口时弹 toast
-export function ScheduleReminder({
-  isWorkday,
-  initialSkippedToday,
-  schedule
-}: {
-  isWorkday: boolean
-  initialSkippedToday: boolean
-  schedule: Pick<ScheduleState, 'enabled' | 'pauseTime' | 'reminderEnabled' | 'reminderMinutes'>
-}) {
-  useEffect(() => {
-    // 刷新时由 SSR 注入 initialSkippedToday，恢复客户端内存态；软导航期间 schedule 不变，保持当前会话状态
-    useScheduleStore.getState().setSchedule({
-      enabled: schedule.enabled,
-      pauseTime: schedule.pauseTime,
-      reminderEnabled: schedule.reminderEnabled,
-      reminderMinutes: schedule.reminderMinutes,
-      skippedToday: initialSkippedToday
-    })
-  }, [schedule, initialSkippedToday])
-
-  const { enabled, pauseTime, reminderEnabled, reminderMinutes, skippedToday } = useScheduleStore()
-
-  // const skippedTodayRef = useRef(skippedToday)
-
-  // useEffect(() => {
-  //   skippedTodayRef.current = skippedToday
-  // }, [skippedToday])
-
-  useEffect(() => {
-    // 配置关闭或暂停时间缺失：清空残留 toast
-    if (!enabled || !reminderEnabled || !pauseTime) {
-      if (reminderToastId) {
-        toast.close(reminderToastId)
-        reminderToastId = null
-      }
-      return
-    }
-    if (!isWorkday) return
-
-    const [h, m] = pauseTime.split(':').map(Number)
-    const pause = new Date()
-    pause.setHours(h, m, 0, 0)
-    const now = Date.now()
-    // 进入提醒窗口（暂停前 reminderMinutes 分钟内）才提醒，暂停已过则不提醒
-    const inWindow = now < pause.getTime() && now >= pause.getTime() - reminderMinutes * 60000
-    if (!inWindow) {
-      // 窗口外：清空残留 toast
-      if (reminderToastId) {
-        toast.close(reminderToastId)
-        reminderToastId = null
-      }
-      return
-    }
-    // 窗口内：已有 toast 则保持（跳过/还原在同一条上 update），无则按当前状态弹新
-  }, [enabled, pauseTime, reminderEnabled, reminderMinutes, isWorkday])
-
-  useEffect(() => {
-    if (enabled && isWorkday) showReminderToast(pauseTime, skippedToday)
-  }, [pauseTime, skippedToday, enabled, isWorkday])
+// 常驻提醒组件：挂在 root layout，由后端经 SSE 推送提醒状态驱动，前端无需任何定时器
+export function ScheduleReminder() {
+  useSSE<ReminderState>('reminder', handleReminder)
   return null
 }

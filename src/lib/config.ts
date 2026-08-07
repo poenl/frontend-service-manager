@@ -23,11 +23,19 @@ export interface ScheduleConfig {
   reminderMinutes: number
 }
 
+// 全年节假日数据缓存（一次拉取即全年数据，持久化到本地供重启后复用）
+export interface WorkdayCache {
+  year: number
+  holidays: string[]
+  workdays: string[]
+}
+
 interface Store {
   services: ServiceConfig[]
   projectDirs: ProjectDir[]
   schedule: ScheduleConfig
   skipPauseDate?: string
+  workdayCache?: WorkdayCache
 }
 
 let _store: Conf<Store> | null = null
@@ -158,4 +166,12 @@ export function setSkipPauseDate(date: string | undefined) {
   } else {
     store().set('skipPauseDate', date)
   }
+}
+
+export function getWorkdayCache(): WorkdayCache | undefined {
+  return store().get('workdayCache')
+}
+
+export function setWorkdayCache(cache: WorkdayCache) {
+  store().set('workdayCache', cache)
 }
