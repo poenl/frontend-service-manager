@@ -1,8 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { Socket } from 'node:net'
-import { homedir } from 'node:os'
+import { homedir, platform } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { getService } from '@/lib/config'
 import { eventBus } from '@/lib/service-events'
 
@@ -24,25 +24,47 @@ function detectPm(cwd: string): string {
   return 'npx'
 }
 
-function isPortInUse(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = new Socket()
-    socket.setTimeout(2000)
-    socket.once('connect', () => {
-      socket.destroy()
-      resolve(true)
-    })
-    socket.once('error', () => {
-      socket.destroy()
-      resolve(false)
-    })
-    socket.once('timeout', () => {
-      socket.destroy()
-      resolve(false)
-    })
-    socket.connect(port, '127.0.0.1')
-    socket.unref()
-  })
+const execFileAsync = promisify(execFile)
+
+// 查找监听指定端口的进程 PID 列表（macOS/Linux 用 lsof，Windows 用 netstat）
+async function findPidByPort(port: number): Promise<number[]> {
+  try {
+    if (platform() === 'win32') {
+      const { stdout } = await execFileAsync('netstat', ['-ano', '-p', 'tcp'])
+      return String(stdout)
+        .split('\n')
+        .filter((line) => line.includes(`:${port}`) && line.includes('LISTENING'))
+        .map((line) => Number(line.trim().split(/\s+/).pop()))
+        .filter((pid) => !isNaN(pid) && pid > 0)
+    }
+    const { stdout } = await execFileAsync('lsof', ['-t', '-sTCP:LISTEN', `-i:${port}`])
+    return String(stdout)
+      .split('\n')
+      .map((line) => Number(line.trim()))
+      .filter((pid) => !isNaN(pid))
+  } catch {
+    return []
+  }
+}
+
+// 端口是否被占用：存在监听该端口的进程即视为占用
+async function isPortInUse(port: number): Promise<boolean> {
+  return (await findPidByPort(port)).length > 0
+}
+
+// 强杀指定 PID 列表，Windows 用 taskkill（连带子进程树），POSIX 用 SIGKILL
+async function killPids(pids: number[]): Promise<void> {
+  for (const pid of pids) {
+    try {
+      if (platform() === 'win32') {
+        await execFileAsync('taskkill', ['/F', '/T', '/PID', String(pid)])
+      } else {
+        process.kill(pid, 'SIGKILL')
+      }
+    } catch {
+      // 进程已退出则忽略
+    }
+  }
 }
 
 export async function startService(
@@ -184,23 +206,42 @@ export async function stopService(
   const entry = processes.get(id)
   if (!entry) return { success: false, message: '服务未在运行', status: 409 }
 
+  const config = getService(id)
   const { proc } = entry
+
+  // 先正常请求退出；包管理器 wrapper 是否会把信号传给 vite 子进程无法保证，
+  // 因此后续还要靠端口兜底确保真正释放
   proc.kill('SIGTERM')
 
-  return new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
+    if (proc.exitCode !== null || proc.signalCode !== null) return resolve()
+
     const forceKill = setTimeout(() => {
       if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL')
     }, 3000)
 
-    proc.on('exit', () => {
+    proc.once('exit', () => {
       clearTimeout(forceKill)
-      const msg = `[${new Date().toLocaleTimeString()}] 服务已停止`
-      entry.logs.push(msg)
-      eventBus.emit('log', { id, line: msg })
-      eventBus.emit('status', { id, running: false })
-      resolve({ success: true, message: '服务已停止' })
+      resolve()
     })
   })
+
+  // 端口兜底：无论进程树关系如何，只要前端端口仍被占用，就定位占用者并强杀
+  const port = config?.frontendPort ? parseInt(config.frontendPort, 10) : null
+  if (port) {
+    for (let i = 0; i < 5; i++) {
+      const pids = await findPidByPort(port)
+      if (pids.length === 0) break
+      await killPids(pids)
+      await new Promise((r) => setTimeout(r, 200))
+    }
+  }
+
+  const msg = `[${new Date().toLocaleTimeString()}] 服务已停止`
+  entry.logs.push(msg)
+  eventBus.emit('log', { id, line: msg })
+  eventBus.emit('status', { id, running: false })
+  return { success: true, message: '服务已停止' }
 }
 
 export function getServiceStatus(id: string): {
