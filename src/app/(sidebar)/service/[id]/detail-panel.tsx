@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field, FieldLabel, FieldContent, FieldError } from '@/components/ui/field'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import {
   InputGroup,
@@ -16,7 +15,6 @@ import {
   InputGroupAddon,
   InputGroupInput
 } from '@/components/ui/input-group'
-import anser from 'anser'
 import { Spinner } from '@/components/ui/spinner'
 import {
   Select,
@@ -39,6 +37,7 @@ import { Play, Square, Circle } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import { useServiceStore } from '@/lib/service-store'
 import * as api from '@/lib/service-api'
+import LogViewer from './log-viewer'
 
 export default function ServiceDetailPanel() {
   const router = useRouter()
@@ -57,14 +56,9 @@ export default function ServiceDetailPanel() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [busy, setBusy] = useState<{ id: string; action: 'start' | 'stop' } | null>(null)
-  const logEndRef = useRef<HTMLDivElement>(null)
 
   const selected = services.find((s) => s.id === selectedId)
   const frontendUrl = useFrontendUrl(selected?.frontendPort, !!running[selectedId], hostname)
-
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [logs])
 
   if (!selected) return null
 
@@ -324,21 +318,7 @@ export default function ServiceDetailPanel() {
           <CardTitle>运行日志</CardTitle>
         </CardHeader>
         <CardContent className="flex-1 min-h-0 flex flex-col">
-          <ScrollArea className="flex-1 min-h-0 w-full rounded-lg border bg-muted/30 p-3">
-            <pre className="text-xs leading-relaxed font-mono">
-              {(logs[selected.id] ?? []).length > 0
-                ? (logs[selected.id] ?? []).map((line, i) => (
-                    <div
-                      key={i}
-                      dangerouslySetInnerHTML={{
-                        __html: anser.ansiToHtml(line, { use_classes: false })
-                      }}
-                    />
-                  ))
-                : '暂无日志'}
-            </pre>
-            <div ref={logEndRef} />
-          </ScrollArea>
+          <LogViewer lines={logs[selected.id] ?? []} />
         </CardContent>
       </Card>
     </div>
