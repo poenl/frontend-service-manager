@@ -23,6 +23,7 @@ export interface ServiceState {
   pausedCount: number
   isLocal: boolean
   hostname: string
+  operating: { id: string; action: 'start' | 'stop' } | null
 }
 
 export type ServiceStore = ReturnType<typeof createServiceStore>
@@ -40,7 +41,8 @@ export function toServiceState(initial: ServiceInitialData): ServiceState {
     logs: initial.logs ?? {},
     pausedCount: initial.pausedCount ?? 0,
     isLocal: initial.isLocal ?? false,
-    hostname: initial.hostname ?? ''
+    hostname: initial.hostname ?? '',
+    operating: null
   }
 }
 
@@ -50,6 +52,11 @@ let storeInstance: ServiceStore | null = null
 export function getServiceStore(initial: ServiceInitialData): ServiceStore {
   if (!storeInstance) storeInstance = createServiceStore(toServiceState(initial))
   return storeInstance
+}
+
+// 设置操作中状态：列表右键菜单与详情页按钮共用，保证 loading 同步
+export function setOperating(op: { id: string; action: 'start' | 'stop' } | null) {
+  storeInstance?.setState({ operating: op })
 }
 
 let _subscribed = false

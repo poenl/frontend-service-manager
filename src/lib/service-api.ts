@@ -7,6 +7,10 @@ export async function fetchServices(): Promise<ServiceConfig[]> {
   return request(BASE)
 }
 
+export async function fetchRandomPort(): Promise<{ port: number }> {
+  return request(`${BASE}/random-port`)
+}
+
 export async function createService(data: Omit<ServiceConfig, 'id'>): Promise<ServiceConfig> {
   return request(BASE, {
     method: 'POST',

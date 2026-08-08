@@ -13,7 +13,8 @@ import {
   InputGroup,
   InputGroupText,
   InputGroupAddon,
-  InputGroupInput
+  InputGroupInput,
+  InputGroupButton
 } from '@/components/ui/input-group'
 import { Spinner } from '@/components/ui/spinner'
 import {
@@ -33,9 +34,9 @@ import {
   AlertDialogFooter,
   AlertDialogCancel
 } from '@/components/ui/alert-dialog'
-import { Play, Square, Circle } from 'lucide-react'
+import { Play, Square, Circle, Dices } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
-import { useServiceStore } from '@/lib/service-store'
+import { useServiceStore, setOperating } from '@/lib/service-store'
 import * as api from '@/lib/service-api'
 import LogViewer from './log-viewer'
 
@@ -50,12 +51,13 @@ export default function ServiceDetailPanel() {
   const logs = useServiceStore((s) => s.logs)
   const hostname = useServiceStore((s) => s.hostname)
   const isLocal = useServiceStore((s) => s.isLocal)
+  const operating = useServiceStore((s) => s.operating)
 
   const [frontendPortError, setFrontendPortError] = useState<string | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [busy, setBusy] = useState<{ id: string; action: 'start' | 'stop' } | null>(null)
+  const [randomPortBusy, setRandomPortBusy] = useState(false)
 
   const selected = services.find((s) => s.id === selectedId)
   const frontendUrl = useFrontendUrl(selected?.frontendPort, !!running[selectedId], hostname)
@@ -102,6 +104,20 @@ export default function ServiceDetailPanel() {
     api.updateService(id, { frontendPort: clean })
   }
 
+  // 随机端口：后端校验（避开本服务管理器端口、已配置服务端口与系统占用端口）
+  const handleRandomPort = async (id: string) => {
+    setRandomPortBusy(true)
+    try {
+      const { port } = await api.fetchRandomPort()
+      setFrontendPortError(null)
+      api.updateService(id, { frontendPort: String(port) })
+    } catch {
+      /* request() 已 toast 错误 */
+    } finally {
+      setRandomPortBusy(false)
+    }
+  }
+
   const handleDelete = async () => {
     setIsDeleting(true)
     try {
@@ -117,13 +133,13 @@ export default function ServiceDetailPanel() {
 
   const handleServiceAction = async (id: string, action: 'start' | 'stop') => {
     if (action === 'stop' && !running[id]) return
-    setBusy({ id, action })
+    setOperating({ id, action })
     try {
       await api.operateService(id, action)
     } catch {
       /* ignore */
     } finally {
-      setBusy(null)
+      setOperating(null)
     }
   }
 
@@ -229,14 +245,29 @@ export default function ServiceDetailPanel() {
           <Field>
             <FieldLabel>前端端口</FieldLabel>
             <FieldContent>
-              <Input
-                value={selected.frontendPort}
-                aria-invalid={!!fieldErrors.frontendPort || !!frontendPortError || undefined}
-                onChange={(e) => handleFrontendPortChange(selected.id, e.target.value)}
-                onBlur={() => setTouched((prev) => ({ ...prev, frontendPort: true }))}
-                placeholder="80"
-                disabled={isRunning}
-              />
+              <InputGroup>
+                <InputGroupInput
+                  value={selected.frontendPort}
+                  aria-invalid={!!fieldErrors.frontendPort || !!frontendPortError || undefined}
+                  onChange={(e) => handleFrontendPortChange(selected.id, e.target.value)}
+                  onBlur={() => setTouched((prev) => ({ ...prev, frontendPort: true }))}
+                  placeholder="80"
+                  disabled={isRunning}
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    onClick={() => handleRandomPort(selected.id)}
+                    disabled={isRunning || randomPortBusy}
+                  >
+                    {randomPortBusy ? (
+                      <Spinner className="size-3.5" />
+                    ) : (
+                      <Dices className="size-3.5" />
+                    )}
+                    随机
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
               <FieldError>{fieldErrors.frontendPort ?? frontendPortError}</FieldError>
             </FieldContent>
           </Field>
@@ -273,9 +304,11 @@ export default function ServiceDetailPanel() {
         <CardContent className="flex items-center gap-3">
           <Button
             onClick={() => handleServiceAction(selected.id, 'start')}
-            disabled={busy?.id === selected.id || Object.values(fieldErrors).some(Boolean)}
+            disabled={
+              operating?.id === selected.id || isRunning || Object.values(fieldErrors).some(Boolean)
+            }
           >
-            {busy?.id === selected.id && busy?.action === 'start' ? (
+            {operating?.id === selected.id && operating?.action === 'start' ? (
               <Spinner />
             ) : (
               <Play className="size-4" />
@@ -285,9 +318,9 @@ export default function ServiceDetailPanel() {
           <Button
             variant="secondary"
             onClick={() => handleServiceAction(selected.id, 'stop')}
-            disabled={busy?.id === selected.id}
+            disabled={operating?.id === selected.id || !isRunning}
           >
-            {busy?.id === selected.id && busy?.action === 'stop' ? (
+            {operating?.id === selected.id && operating?.action === 'stop' ? (
               <Spinner />
             ) : (
               <Square className="size-4" />

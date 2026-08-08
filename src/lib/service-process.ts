@@ -48,7 +48,8 @@ async function findPidByPort(port: number): Promise<number[]> {
 }
 
 // 端口是否被占用：存在监听该端口的进程即视为占用
-async function isPortInUse(port: number): Promise<boolean> {
+// 导出供随机端口路由（/api/service/random-port）复用
+export async function isPortInUse(port: number): Promise<boolean> {
   return (await findPidByPort(port)).length > 0
 }
 
