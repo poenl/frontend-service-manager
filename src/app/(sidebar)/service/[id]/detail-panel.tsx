@@ -37,6 +37,7 @@ import {
 import { Play, Square, Circle, Dices } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import { useServiceStore, setOperating } from '@/lib/service-store'
+import { openServiceTab } from '@/lib/open-service-tab'
 import * as api from '@/lib/service-api'
 import LogViewer from './log-viewer'
 
@@ -331,9 +332,12 @@ export default function ServiceDetailPanel() {
           {isRunning && selected.frontendPort ? (
             <a
               href={frontendUrl ?? '#'}
-              target="_blank"
-              rel="noopener noreferrer"
               className="inline-flex h-5 items-center gap-1 rounded-4xl border border-transparent bg-primary px-2 py-0.5 text-xs font-medium whitespace-nowrap text-primary-foreground"
+              onClick={(e) => {
+                // 已打开的标签页复用聚焦，不新开不刷新；preventDefault 避免默认 _blank 导航
+                e.preventDefault()
+                openServiceTab(selected.id, frontendUrl!)
+              }}
             >
               {frontendUrl ?? `:${selected.frontendPort}`}
             </a>

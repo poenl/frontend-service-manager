@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import { useServiceStore, setOperating } from '@/lib/service-store'
+import { openServiceTab } from '@/lib/open-service-tab'
 import type { ServiceConfig } from '@/lib/config'
 import {
   createService,
@@ -124,7 +125,7 @@ function ServiceItem({
                 url
                   ? (e) => {
                       e.stopPropagation()
-                      window.open(url, '_blank')
+                      openServiceTab(id, url)
                     }
                   : undefined
               }
