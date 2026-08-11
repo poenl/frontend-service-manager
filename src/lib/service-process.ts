@@ -92,21 +92,25 @@ export async function startService(
   if (!cwd || !existsSync(cwd)) return { success: false, message: '项目目录不存在', status: 422 }
 
   const pm = detectPm(cwd)
-  const args = [pm === 'npx' ? 'vite' : 'vite']
+  const args = ['vite']
   args.push('--no-open')
   if (config.frontendPort) args.push('--port', config.frontendPort)
 
-  const env = {
-    ...process.env,
+  const baseUrl =
+    config.backendHost && config.backendPort
+      ? `http://${config.backendHost}:${config.backendPort}`
+      : undefined
+  // 显式注入的环境变量为唯一来源，env 与日志前缀都由此派生，避免两者再次不一致
+  const injected = {
     FORCE_COLOR: '1',
     NODE_ENV: 'development',
-    VITE_APP_BASE_URL:
-      config.backendHost && config.backendPort
-        ? `http://${config.backendHost}:${config.backendPort}`
-        : undefined
-  } as NodeJS.ProcessEnv
-
-  const envPrefix = env.VITE_APP_BASE_URL ? `VITE_APP_BASE_URL=${env.VITE_APP_BASE_URL} ` : ''
+    ...(baseUrl ? { VITE_APP_BASE_URL: baseUrl } : {})
+  }
+  const env = { ...process.env, ...injected } as NodeJS.ProcessEnv
+  const envPrefix =
+    Object.entries(injected)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(' ') + ' '
 
   // ponytail: 仅支持 Vite，后续可按需扩展 webpack/dev-server 等
   const commandLine = `[${new Date().toLocaleTimeString()}] $ ${envPrefix}${pm} ${args.join(' ')}`
