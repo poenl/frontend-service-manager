@@ -36,7 +36,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Play, Square, Circle, Dices } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
-import { useServiceStore, setOperating } from '@/lib/service-store'
+import { useServiceStore, setOperating, getServiceStore } from '@/lib/service-store'
+import type { ServiceConfig } from '@/lib/config'
 import { openServiceTab } from '@/lib/open-service-tab'
 import * as api from '@/lib/service-api'
 import LogViewer from './log-viewer'
@@ -68,6 +69,13 @@ export default function ServiceDetailPanel() {
   const selectedDir = projectDirs.find((p) => p.path === selected.projectDir)
   const isRunning = !!running[selectedId]
 
+  // 乐观更新：先写本地 store，受控 value 即时反映，避免中文输入法组合被打断
+  const optimisticPatch = (id: string, patch: Partial<ServiceConfig>) => {
+    getServiceStore({}).setState((s) => ({
+      services: s.services.map((svc) => (svc.id === id ? { ...svc, ...patch } : svc))
+    }))
+  }
+
   const fieldErrors = {
     name: touched.name && !selected.name ? '请输入服务名称' : null,
     projectDir: touched.projectDir && !selected.projectDir ? '请输入项目目录' : null,
@@ -84,6 +92,7 @@ export default function ServiceDetailPanel() {
       patch.backendHost = match[1]
       patch.backendPort = match[2]
     }
+    optimisticPatch(id, patch)
     api.updateService(id, patch)
   }
 
@@ -102,6 +111,7 @@ export default function ServiceDetailPanel() {
     }
 
     setFrontendPortError(error)
+    optimisticPatch(id, { frontendPort: clean })
     api.updateService(id, { frontendPort: clean })
   }
 
@@ -111,6 +121,7 @@ export default function ServiceDetailPanel() {
     try {
       const { port } = await api.fetchRandomPort()
       setFrontendPortError(null)
+      optimisticPatch(id, { frontendPort: String(port) })
       api.updateService(id, { frontendPort: String(port) })
     } catch {
       /* request() 已 toast 错误 */
@@ -157,7 +168,10 @@ export default function ServiceDetailPanel() {
             <FieldContent>
               <Input
                 value={selected.name}
-                onChange={(e) => api.updateService(selected.id, { name: e.target.value })}
+                onChange={(e) => {
+                  optimisticPatch(selected.id, { name: e.target.value })
+                  api.updateService(selected.id, { name: e.target.value })
+                }}
                 onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
                 placeholder="服务名称"
                 aria-invalid={!!fieldErrors.name || undefined}
@@ -171,6 +185,7 @@ export default function ServiceDetailPanel() {
               <Select
                 value={selected.projectDir || null}
                 onValueChange={(value) => {
+                  optimisticPatch(selected.id, { projectDir: value ?? '' })
                   api.updateService(selected.id, { projectDir: value ?? '' })
                   setTouched((prev) => ({ ...prev, projectDir: true }))
                 }}
@@ -232,9 +247,11 @@ export default function ServiceDetailPanel() {
             <FieldContent>
               <Input
                 value={selected.backendPort}
-                onChange={(e) =>
-                  api.updateService(selected.id, { backendPort: e.target.value.replace(/\D/g, '') })
-                }
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '')
+                  optimisticPatch(selected.id, { backendPort: value })
+                  api.updateService(selected.id, { backendPort: value })
+                }}
                 onBlur={() => setTouched((prev) => ({ ...prev, backendPort: true }))}
                 placeholder="80"
                 disabled={isRunning}
