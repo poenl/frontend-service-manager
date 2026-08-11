@@ -170,5 +170,3 @@ export async function unskipPause() {
 export function reloadSchedule() {
   buildJobs(getSchedule())
 }
-
-reloadSchedule()
