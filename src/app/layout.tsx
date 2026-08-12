@@ -21,8 +21,14 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh" className={`${geistMono.variable} h-full antialiased`}>
+    <html lang="zh" className={`${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="h-full flex flex-col overflow-hidden">
+        {/* 仅跟随系统深色模式：在 hydration 前同步 prefers-color-scheme 到 <html>.dark，并实时响应系统切换，避免首帧闪烁 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){var m=matchMedia('(prefers-color-scheme: dark)');var apply=function(){document.documentElement.classList.toggle('dark',m.matches)};apply();m.addEventListener('change',apply)})()`
+          }}
+        />
         <Toaster />
         <ScheduleReminder />
         {children}
