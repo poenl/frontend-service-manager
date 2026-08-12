@@ -34,6 +34,14 @@ export async function removeService(id: string): Promise<void> {
   await request(`${BASE}/${id}`, { method: 'DELETE' })
 }
 
+export async function reorderServices(ids: string[]): Promise<void> {
+  await request(`${BASE}/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  })
+}
+
 export async function operateService(
   id: string,
   action: 'start' | 'stop'

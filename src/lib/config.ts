@@ -101,6 +101,18 @@ export function deleteService(id: string): boolean {
   return true
 }
 
+// 按传入 id 顺序重排服务列表（数组顺序即展示排序），并持久化。
+// 校验 ids 与当前服务一一对应（长度一致、无重复、id 均存在），不满足则返回 null 拒绝写入。
+export function reorderServices(ids: string[]): ServiceConfig[] | null {
+  const services = store().get('services')
+  if (ids.length !== services.length || new Set(ids).size !== ids.length) return null
+  const byId = new Map(services.map((s) => [s.id, s]))
+  const reordered = ids.map((id) => byId.get(id))
+  if (reordered.some((s) => s === undefined)) return null
+  store().set('services', reordered as ServiceConfig[])
+  return reordered as ServiceConfig[]
+}
+
 export function getProjectDirs(): ProjectDir[] {
   const raw: unknown = store().get('projectDirs')
   // 兼容旧版本 string[] 格式 —— 自动迁移为 { name, path }

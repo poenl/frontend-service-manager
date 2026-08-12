@@ -59,6 +59,11 @@ export function setOperating(op: { id: string; action: 'start' | 'stop' } | null
   storeInstance?.setState({ operating: op })
 }
 
+// 拖拽排序乐观更新：本地写入新顺序，服务端确认后由 SSE 推送兜底覆盖
+export function setServices(services: ServiceConfig[]) {
+  storeInstance?.setState({ services })
+}
+
 let _subscribed = false
 
 // 常驻订阅：回调闭包引用模块级 storeInstance，注册一次不注销

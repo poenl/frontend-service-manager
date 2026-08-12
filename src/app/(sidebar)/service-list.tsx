@@ -1,7 +1,20 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Settings, Pause, Play, Square, ArrowUpRight, Copy, Trash2 } from 'lucide-react'
+import { DragDropProvider, type DragEndEvent } from '@dnd-kit/react'
+import { useSortable } from '@dnd-kit/react/sortable'
+import { move } from '@dnd-kit/helpers'
+import { RestrictToVerticalAxis } from '@dnd-kit/abstract/modifiers'
+import {
+  Settings,
+  Pause,
+  Play,
+  Square,
+  ArrowUpRight,
+  Copy,
+  GripVertical,
+  Trash2
+} from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
@@ -27,7 +40,7 @@ import {
   AlertDialogCancel
 } from '@/components/ui/alert-dialog'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
-import { useServiceStore, setOperating } from '@/lib/service-store'
+import { useServiceStore, setOperating, setServices } from '@/lib/service-store'
 import { openServiceTab } from '@/lib/open-service-tab'
 import type { ServiceConfig } from '@/lib/config'
 import {
@@ -36,6 +49,7 @@ import {
   operateService,
   pauseAllServices,
   removeService,
+  reorderServices,
   resumeAllServices
 } from '@/lib/service-api'
 
@@ -72,6 +86,7 @@ async function duplicateService(
 
 function ServiceItem({
   id,
+  index,
   name,
   backendPort,
   frontendPort,
@@ -84,6 +99,7 @@ function ServiceItem({
   onRequestDelete
 }: {
   id: string
+  index: number
   name: string
   backendPort: string
   frontendPort: string
@@ -99,6 +115,15 @@ function ServiceItem({
   const running = useServiceStore((s) => s.running)
   const hostname = useServiceStore((s) => s.hostname)
   const url = useFrontendUrl(frontendPort, !!running[id], hostname)
+  // dnd-kit sortable：ref 绑定整行（拖拽源与放置目标），isDragging 驱动拖拽中样式；
+  // RestrictToVerticalAxis 限制拖拽仅沿 y 轴移动；
+  // transition.idle 开启后 SSE 推送顺序变化（无拖拽）也触发 FLIP 动画
+  const { ref, isDragging } = useSortable({
+    id,
+    index,
+    modifiers: [RestrictToVerticalAxis],
+    transition: { idle: true }
+  })
 
   return (
     <ContextMenu>
@@ -106,14 +131,18 @@ function ServiceItem({
         render={
           <button
             type="button"
+            ref={ref}
             onClick={() => router.push('/service/' + id)}
             data-selected={selected || undefined}
-            className="relative flex items-center justify-between w-full rounded-lg px-3 py-2 overflow-hidden text-left text-sm transition-colors hover:bg-muted data-selected:bg-muted data-selected:font-bold group"
+            data-dragging={isDragging || undefined}
+            className="relative flex items-center justify-between w-full rounded-lg px-3 py-2 overflow-hidden text-left text-sm transition-colors hover:bg-muted data-selected:bg-muted data-selected:font-bold data-dragging:bg-accent data-dragging:shadow-lg data-dragging:z-10 data-dragging:cursor-grabbing group"
           >
             <span className="absolute inset-0 flex items-center justify-center text-3xl font-extrabold text-muted-foreground/20 pointer-events-none select-none">
               {backendPort ? `:${backendPort}` : ''}
             </span>
             <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+              {/* 拖拽手柄：图标区显示 grab 光标提示可拖拽，事件冒泡不拦截点击跳转与右键菜单 */}
+              <GripVertical className="size-3.5 shrink-0 text-muted-foreground/40 cursor-grab group-hover:text-muted-foreground/70" />
               <span className="flex-1 truncate font-medium group-data-selected:font-bold">
                 {name || '未命名服务'}
               </span>
@@ -177,8 +206,33 @@ export default function ServiceList() {
   const [isDeleting, setIsDeleting] = useState(false)
   // 打开删除弹窗时聚焦确认按钮，回车即确认删除
   const deleteConfirmRef = useRef<HTMLButtonElement>(null)
+  // 拖拽中的临时排序（id 数组）；null 表示未拖拽，按服务端顺序渲染
+  const [draftOrder, setDraftOrder] = useState<string[] | null>(null)
 
   const hasRunning = Object.values(running).some(Boolean)
+
+  // id 数组映射回服务对象：拖拽中顺序渲染、乐观更新与回滚共用
+  const resolveServices = (ids: string[]) =>
+    ids.map((id) => services.find((s) => s.id === id)).filter((s): s is ServiceConfig => Boolean(s))
+
+  // 渲染顺序：拖拽中优先 draftOrder，否则用 store 里的服务端顺序
+  const orderedServices = draftOrder === null ? services : resolveServices(draftOrder)
+
+  // 拖拽结束：顺序有变化则乐观写入 store（避免 UI 闪回旧序），持久化失败时回滚到拖拽前顺序
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setDraftOrder(null)
+    if (event.canceled) return
+    const next = move(draftOrder ?? services.map((s) => s.id), event)
+    if (next.join() === services.map((s) => s.id).join()) return
+    // 乐观更新：立即按新顺序渲染，服务端确认后由 SSE 推回一致数据
+    setServices(resolveServices(next))
+    try {
+      await reorderServices(next)
+    } catch {
+      // request() 已 toast 错误；回滚到拖拽前的顺序
+      setServices(services)
+    }
+  }
 
   const handleAdd = async () => {
     try {
@@ -294,26 +348,35 @@ export default function ServiceList() {
       </CardHeader>
       <CardContent className="flex flex-col gap-2 flex-1">
         <ScrollArea>
-          <div className="flex flex-col gap-1.5">
-            {services.map((s) => (
-              <ServiceItem
-                key={s.id}
-                id={s.id}
-                name={s.name}
-                backendPort={s.backendPort}
-                frontendPort={s.frontendPort}
-                readyToStart={
-                  !!(s.name && s.projectDir && s.backendHost && s.backendPort && s.frontendPort)
-                }
-                selected={s.id === selectedId}
-                operating={operating}
-                onStart={(id) => handleOperate(id, 'start')}
-                onStop={(id) => handleOperate(id, 'stop')}
-                onDuplicate={handleDuplicate}
-                onRequestDelete={setDeleteId}
-              />
-            ))}
-          </div>
+          <DragDropProvider
+            onDragOver={(event) => {
+              // 拖拽过程中实时重排本地顺序（乐观更新），让列表即时跟随
+              setDraftOrder((prev) => move(prev ?? services.map((s) => s.id), event))
+            }}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex flex-col gap-1.5">
+              {orderedServices.map((s, index) => (
+                <ServiceItem
+                  key={s.id}
+                  id={s.id}
+                  index={index}
+                  name={s.name}
+                  backendPort={s.backendPort}
+                  frontendPort={s.frontendPort}
+                  readyToStart={
+                    !!(s.name && s.projectDir && s.backendHost && s.backendPort && s.frontendPort)
+                  }
+                  selected={s.id === selectedId}
+                  operating={operating}
+                  onStart={(id) => handleOperate(id, 'start')}
+                  onStop={(id) => handleOperate(id, 'stop')}
+                  onDuplicate={handleDuplicate}
+                  onRequestDelete={setDeleteId}
+                />
+              ))}
+            </div>
+          </DragDropProvider>
         </ScrollArea>
         <Button onClick={handleAdd} variant="outline" className="w-full mt-2">
           + 添加服务
