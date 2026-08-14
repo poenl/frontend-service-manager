@@ -1,14 +1,39 @@
 {
   "name": "frontend-service-manager",
   "version": "0.1.0",
-  "private": true,
+  "description": "Manage Vite dev servers from a web UI — spawn, watch logs, pause/resume, all in one local dashboard.",
+  "keywords": [
+    "frontend",
+    "service",
+    "manager",
+    "vite",
+    "dev-server",
+    "dashboard",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/poenl/frontend-service-manager.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "fsm": "scripts/manage.mjs"
+  },
+  "files": [
+    ".next/standalone",
+    "scripts"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint --cache",
     "typecheck": "tsc --noEmit",
-    "check": "concurrently -n ts,lint -c cyan,green \"pnpm typecheck\" \"pnpm lint\""
+    "check": "concurrently -n ts,lint -c cyan,green \"pnpm typecheck\" \"pnpm lint\"",
+    "prepack": "pnpm build && node scripts/manage.mjs stage"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

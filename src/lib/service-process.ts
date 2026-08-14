@@ -314,3 +314,18 @@ export async function resumeAllServices(): Promise<{
   eventBus.emit('paused', { pausedCount: 0 })
   return { success: true, message: `已恢复 ${succeeded}/${ids.length} 个服务`, resumedCount: 0 }
 }
+
+// 退出清理：daemon 进程被终止时兜底停掉所有运行中的服务，
+// 否则 vite 子进程不会随父进程消亡而残留为孤儿进程（Node 不会自动清理子进程）
+let cleanedUp = false
+async function cleanupOnExit(signal?: NodeJS.Signals): Promise<void> {
+  if (cleanedUp) return
+  cleanedUp = true
+  await Promise.allSettled([...processes.keys()].map((id) => stopService(id)))
+  process.exit(signal === 'SIGINT' ? 130 : 0)
+}
+for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(sig, () => {
+    void cleanupOnExit(sig)
+  })
+}

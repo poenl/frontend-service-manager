@@ -1,9 +1,14 @@
 ## Commands
 
+- 禁止执行构建命令（如 `pnpm build`、`next build`）：任何情况下都不得运行构建类命令，除非用户明确要求。
+
 - `pnpm dev` — dev server (don't start without asking)
 - `pnpm check` — typecheck + lint in parallel (run after every change)
 - `pnpm lint` / `pnpm typecheck` — individual checks
-- `pnpm build` / `pnpm start` — production build & start
+- `pnpm build` — production build (standalone output). Static & public assets are staged into `.next/standalone/` by `scripts/manage.mjs stage`, invoked via `prepack` (not by a bare `pnpm build`)
+- `pnpm link` — one-time global link so the `fsm` command is available on PATH
+- `fsm stage|start|stop|status|log` — manage the standalone production daemon (start/stop/status/log; `stage` is invoked via `prepack`). `fsm start` is build-free; if the artifact is missing, run `pnpm build` then `node scripts/manage.mjs stage`. `fsm start --port <n>` overrides the listen port (default 3000); status reads the recorded port
+- `npm publish` — runs `prepack` (`pnpm build && node scripts/manage.mjs stage`), then publishes the standalone package (files: `.next/standalone`, `scripts`; no source)
 
 ## Architecture
 
@@ -21,7 +26,7 @@
 
 **Configuration** (`src/lib/config.ts`): persisted via `conf` npm package on the server side. Types: `ServiceConfig` (id, name, projectDir, backendHost, backendPort, frontendPort), `ProjectDir` (name, path).
 
-**Service process** (`src/lib/service-process.ts`): spawns `vite dev` via child_process. Detects package manager (pnpm/yarn/npx) per project. Logs captured via pipe, FORCE_COLOR=1 enables ANSI, rendered client-side by `anser`.
+**Service process** (`src/lib/service-process.ts`): spawns `vite dev` via child_process. Detects package manager (pnpm/yarn/npx) per project. Logs captured via pipe, FORCE_COLOR=1 enables ANSI, rendered client-side by `anser`. On daemon exit (SIGTERM/SIGINT) a cleanup hook stops all running child services so they don't linger as orphan processes.
 
 **Real-time events**: in-process `EventBus` (`lib/service-events.ts`) → SSE stream (`/api/service/events`). Events: `snapshot` (init), `status`, `log`, `paused`, `services` (full list), `project-dirs` (full list). Config mutations emit the full-list event, not granular.
 
@@ -51,6 +56,7 @@ Browser Notification API. Only fires when `document.visibilityState === 'hidden'
 
 ## Cautions
 
+- 兼容主流桌面端与运行时：代码须兼容主流桌面端（macOS / Windows / Linux）与主流运行时（Node.js / bun）；使用平台相关命令或依赖前，须先确认替代方案（如避免依赖 `tail` 等非跨平台命令），或提供降级/条件处理。
 - SSE connects once per page session. Never add manual `connect()`/`disconnect()`.
 - `pnpm check` must pass before committing.
 - Tailwind is v4; uses `@tailwindcss/postcss` plugin, CSS-first config (no `tailwind.config.*`).
