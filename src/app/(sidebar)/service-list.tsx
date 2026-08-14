@@ -43,6 +43,7 @@ import { useFrontendUrl } from '@/lib/use-frontend-url'
 import { useServiceStore, setOperating, setServices } from '@/lib/service-store'
 import { openServiceTab } from '@/lib/open-service-tab'
 import type { ServiceConfig } from '@/lib/config'
+import { isServiceStartable } from '@/lib/service-schema'
 import {
   createService,
   fetchRandomPort,
@@ -77,6 +78,7 @@ async function duplicateService(
   const dup = await createService({
     name: duplicateName(services, svc.name),
     projectDir: svc.projectDir,
+    backendProtocol: svc.backendProtocol,
     backendHost: svc.backendHost,
     backendPort: svc.backendPort,
     frontendPort: String(port)
@@ -364,9 +366,7 @@ export default function ServiceList() {
                   name={s.name}
                   backendPort={s.backendPort}
                   frontendPort={s.frontendPort}
-                  readyToStart={
-                    !!(s.name && s.projectDir && s.backendHost && s.backendPort && s.frontendPort)
-                  }
+                  readyToStart={isServiceStartable(s, services)}
                   selected={s.id === selectedId}
                   operating={operating}
                   onStart={(id) => handleOperate(id, 'start')}

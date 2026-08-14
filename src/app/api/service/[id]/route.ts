@@ -3,7 +3,13 @@ import { getServices, getService, updateService, deleteService } from '@/lib/con
 import { getServiceStatus, stopService } from '@/lib/service-process'
 import { eventBus } from '@/lib/service-events'
 
-const RUNNING_BLOCKED_FIELDS = ['projectDir', 'backendHost', 'backendPort', 'frontendPort'] as const
+const RUNNING_BLOCKED_FIELDS = [
+  'projectDir',
+  'backendProtocol',
+  'backendHost',
+  'backendPort',
+  'frontendPort'
+] as const
 
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

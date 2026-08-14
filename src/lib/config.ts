@@ -4,6 +4,7 @@ export interface ServiceConfig {
   id: string
   name: string
   projectDir: string
+  backendProtocol?: 'http' | 'https'
   backendHost: string
   backendPort: string
   frontendPort: string

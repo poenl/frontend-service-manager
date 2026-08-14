@@ -4,6 +4,7 @@ import { homedir, platform } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { getService } from '@/lib/config'
+import { serviceConfigSchema } from '@/lib/service-schema'
 import { eventBus } from '@/lib/service-events'
 
 interface ProcessEntry {
@@ -73,10 +74,12 @@ export async function startService(
 ): Promise<{ success: boolean; message: string; status?: number }> {
   const config = getService(id)
   if (!config) return { success: false, message: '服务不存在', status: 404 }
-  if (!config.projectDir) return { success: false, message: '请填写项目目录', status: 400 }
-  if (!config.backendHost) return { success: false, message: '请填写后端地址', status: 400 }
-  if (!config.backendPort) return { success: false, message: '请填写后端端口', status: 400 }
-  if (!config.frontendPort) return { success: false, message: '请填写前端端口', status: 400 }
+  // 静态配置校验：与前端共用同一 schema（含 name 必填、端口格式/范围）
+  const parsed = serviceConfigSchema.safeParse(config)
+  if (!parsed.success) {
+    const message = parsed.error.issues[0]?.message ?? '请检查服务配置'
+    return { success: false, message, status: 400 }
+  }
   if (await isPortInUse(parseInt(config.frontendPort, 10))) {
     return { success: false, message: `端口 ${config.frontendPort} 已被其他进程占用`, status: 409 }
   }
@@ -96,10 +99,12 @@ export async function startService(
   args.push('--no-open')
   if (config.frontendPort) args.push('--port', config.frontendPort)
 
-  const baseUrl =
-    config.backendHost && config.backendPort
-      ? `http://${config.backendHost}:${config.backendPort}`
-      : undefined
+  // 后端协议默认为 http；端口可选，留空时按协议取默认（http 80 / https 443）
+  const backendProtocol = config.backendProtocol === 'https' ? 'https' : 'http'
+  const backendPort = config.backendPort || (backendProtocol === 'https' ? '443' : '80')
+  const baseUrl = config.backendHost
+    ? `${backendProtocol}://${config.backendHost}:${backendPort}`
+    : undefined
   // 显式注入的环境变量为唯一来源，env 与日志前缀都由此派生，避免两者再次不一致
   const injected = {
     FORCE_COLOR: '1',

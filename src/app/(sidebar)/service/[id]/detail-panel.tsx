@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
   InputGroup,
-  InputGroupText,
   InputGroupAddon,
   InputGroupInput,
   InputGroupButton
@@ -38,6 +37,7 @@ import { Play, Square, Circle, Dices } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import { useServiceStore, setOperating, getServiceStore } from '@/lib/service-store'
 import type { ServiceConfig } from '@/lib/config'
+import { getFieldErrors, getFrontendPortConflict, isServiceStartable } from '@/lib/service-schema'
 import { openServiceTab } from '@/lib/open-service-tab'
 import * as api from '@/lib/service-api'
 import LogViewer from './log-viewer'
@@ -55,7 +55,6 @@ export default function ServiceDetailPanel() {
   const isLocal = useServiceStore((s) => s.isLocal)
   const operating = useServiceStore((s) => s.operating)
 
-  const [frontendPortError, setFrontendPortError] = useState<string | null>(null)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -76,12 +75,16 @@ export default function ServiceDetailPanel() {
     }))
   }
 
+  // 字段错误派生自共享 schema，但仍以 touched 控制显示时机（blur 后提示）
+  const schemaErrors = getFieldErrors(selected)
+  // 端口冲突由共享函数派生（即时随输入更新，与列表启动判断同源）
+  const frontendPortConflict = getFrontendPortConflict(selected, services)
   const fieldErrors = {
-    name: touched.name && !selected.name ? '请输入服务名称' : null,
-    projectDir: touched.projectDir && !selected.projectDir ? '请输入项目目录' : null,
-    backendHost: touched.backendHost && !selected.backendHost ? '请输入后端地址' : null,
-    backendPort: touched.backendPort && !selected.backendPort ? '请输入后端端口' : null,
-    frontendPort: touched.frontendPort && !selected.frontendPort ? '请输入前端端口' : null
+    name: touched.name ? (schemaErrors.name ?? null) : null,
+    projectDir: touched.projectDir ? (schemaErrors.projectDir ?? null) : null,
+    backendHost: touched.backendHost ? (schemaErrors.backendHost ?? null) : null,
+    backendPort: touched.backendPort ? (schemaErrors.backendPort ?? null) : null,
+    frontendPort: touched.frontendPort ? (schemaErrors.frontendPort ?? null) : null
   }
 
   const handleBackendHostChange = (id: string, value: string) => {
@@ -96,21 +99,9 @@ export default function ServiceDetailPanel() {
     api.updateService(id, patch)
   }
 
+  // 前端端口：剥离非数字后乐观更新，冲突提示由共享函数派生（避免与启动判断规则不一致）
   const handleFrontendPortChange = (id: string, value: string) => {
     const clean = value.replace(/\D/g, '')
-    const currentPort = window.location.port
-    let error: string | null = null
-
-    if (clean === currentPort) {
-      error = `端口 ${currentPort} 与本服务端口冲突`
-    } else if (clean) {
-      const conflict = services.find((s) => s.id !== id && s.frontendPort === clean)
-      if (conflict) {
-        error = `端口 ${clean} 已被「${conflict.name || '未命名'}」使用`
-      }
-    }
-
-    setFrontendPortError(error)
     optimisticPatch(id, { frontendPort: clean })
     api.updateService(id, { frontendPort: clean })
   }
@@ -120,7 +111,6 @@ export default function ServiceDetailPanel() {
     setRandomPortBusy(true)
     try {
       const { port } = await api.fetchRandomPort()
-      setFrontendPortError(null)
       optimisticPatch(id, { frontendPort: String(port) })
       api.updateService(id, { frontendPort: String(port) })
     } catch {
@@ -227,7 +217,26 @@ export default function ServiceDetailPanel() {
             <FieldContent>
               <InputGroup>
                 <InputGroupAddon>
-                  <InputGroupText>https://</InputGroupText>
+                  <Select
+                    value={selected.backendProtocol ?? 'http'}
+                    onValueChange={(value) => {
+                      const patch = { backendProtocol: value as 'http' | 'https' }
+                      optimisticPatch(selected.id, patch)
+                      api.updateService(selected.id, patch)
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="h-6 rounded-[calc(var(--radius)-3px)] border-0 bg-transparent py-0 shadow-none focus-visible:ring-0"
+                      aria-label="后端协议"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false} align="start">
+                      <SelectItem value="http">http://</SelectItem>
+                      <SelectItem value="https">https://</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </InputGroupAddon>
                 <InputGroupInput
                   className="border-0 ring-0 focus-visible:ring-0 shadow-none"
@@ -247,18 +256,18 @@ export default function ServiceDetailPanel() {
             <FieldContent>
               <Input
                 value={selected.backendPort}
+                aria-invalid={!!fieldErrors.backendPort || undefined}
                 onChange={(e) => {
                   const value = e.target.value.replace(/\D/g, '')
                   optimisticPatch(selected.id, { backendPort: value })
                   api.updateService(selected.id, { backendPort: value })
                 }}
                 onBlur={() => setTouched((prev) => ({ ...prev, backendPort: true }))}
-                placeholder="80"
+                placeholder={selected.backendProtocol === 'https' ? '默认 443' : '默认 80'}
                 disabled={isRunning}
-                aria-invalid={!!fieldErrors.backendPort || undefined}
               />
-              <FieldError>{fieldErrors.backendPort}</FieldError>
             </FieldContent>
+            {fieldErrors.backendPort && <FieldError>{fieldErrors.backendPort}</FieldError>}
           </Field>
           <Field>
             <FieldLabel>前端端口</FieldLabel>
@@ -266,7 +275,7 @@ export default function ServiceDetailPanel() {
               <InputGroup>
                 <InputGroupInput
                   value={selected.frontendPort}
-                  aria-invalid={!!fieldErrors.frontendPort || !!frontendPortError || undefined}
+                  aria-invalid={!!fieldErrors.frontendPort || !!frontendPortConflict || undefined}
                   onChange={(e) => handleFrontendPortChange(selected.id, e.target.value)}
                   onBlur={() => setTouched((prev) => ({ ...prev, frontendPort: true }))}
                   placeholder="80"
@@ -286,7 +295,7 @@ export default function ServiceDetailPanel() {
                   </InputGroupButton>
                 </InputGroupAddon>
               </InputGroup>
-              <FieldError>{fieldErrors.frontendPort ?? frontendPortError}</FieldError>
+              <FieldError>{fieldErrors.frontendPort ?? frontendPortConflict}</FieldError>
             </FieldContent>
           </Field>
         </CardContent>
@@ -323,7 +332,7 @@ export default function ServiceDetailPanel() {
           <Button
             onClick={() => handleServiceAction(selected.id, 'start')}
             disabled={
-              operating?.id === selected.id || isRunning || Object.values(fieldErrors).some(Boolean)
+              operating?.id === selected.id || isRunning || !isServiceStartable(selected, services)
             }
           >
             {operating?.id === selected.id && operating?.action === 'start' ? (
