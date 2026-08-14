@@ -10,7 +10,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Frontend Service Manager',
+  title: '前端服务管理器',
   description: 'Vite 开发服务管理面板',
   icons: { icon: '/icon.svg' }
 }
