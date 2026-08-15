@@ -24,11 +24,11 @@
 
 ## Data flow
 
-**Configuration** (`src/lib/config.ts`): persisted via `conf` npm package on the server side. Types: `ServiceConfig` (id, name, projectDir, backendHost, backendPort, frontendPort), `ProjectDir` (name, path).
+**Configuration** (`src/lib/config.ts`): persisted via `conf` npm package on the server side. Types: `ServiceConfig` (id, name, projectId, backendHost, backendPort, frontendPort), `ProjectConfig` (id, name, path, backendEnvVar). Services reference a project config by immutable `projectId` (a `path`-based relation would break on rename/path edit); legacy `projectDir`-path data migrates to ids on read.
 
 **Service process** (`src/lib/service-process.ts`): spawns `vite dev` via child_process. Detects package manager (pnpm/yarn/npx) per project. Logs captured via pipe, FORCE_COLOR=1 enables ANSI, rendered client-side by `anser`. On daemon exit (SIGTERM/SIGINT) a cleanup hook stops all running child services so they don't linger as orphan processes.
 
-**Real-time events**: in-process `EventBus` (`lib/service-events.ts`) → SSE stream (`/api/service/events`). Events: `snapshot` (init), `status`, `log`, `paused`, `services` (full list), `project-dirs` (full list). Config mutations emit the full-list event, not granular.
+**Real-time events**: in-process `EventBus` (`lib/service-events.ts`) → SSE stream (`/api/service/events`). Events: `snapshot` (init), `status`, `log`, `paused`, `services` (full list), `project-configs` (full list). Config mutations emit the full-list event, not granular.
 
 **SSE client** (`src/lib/sse-client.ts`): singleton, auto-connects on first `on()` call. DO NOT call connect/disconnect — use `useSSE()` hook instead. Notification permission (`requestPermission()`) auto-requested on first connect.
 
@@ -46,9 +46,9 @@
 | GET                 | `/api/service/[id]/status\|/[id]/logs` | status/logs                            |
 | POST                | `/api/service/pause\|/resume`          | pause/resume all                       |
 | GET                 | `/api/service/events`                  | SSE stream                             |
-| GET/POST/PUT/DELETE | `/api/settings/project-dirs`           | project directories                    |
+| GET/POST/PUT/DELETE | `/api/settings/project-configs`        | project configs (id-based)             |
 
-Running services block editing of `projectDir`, `backendHost`, `backendPort`, `frontendPort`.
+Running services block editing of `projectId`, `backendHost`, `backendPort`, `frontendPort`.
 
 ## Notifications
 

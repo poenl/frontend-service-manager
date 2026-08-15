@@ -1,5 +1,5 @@
 import { headers } from 'next/headers'
-import { getServices, getProjectDirs } from '@/lib/config'
+import { getServices, getProjectConfigs } from '@/lib/config'
 import { getServiceStatus, getServiceLogs, getPausedCount } from '@/lib/service-process'
 import SidebarLayout from './sidebar-layout'
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const services = getServices()
-  const projectDirs = getProjectDirs()
+  const projectConfigs = getProjectConfigs()
   const running: Record<string, boolean> = {}
   const logs: Record<string, string[]> = {}
 
@@ -24,7 +24,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   return (
     <SidebarLayout
       services={services}
-      projectDirs={projectDirs}
+      projectConfigs={projectConfigs}
       running={running}
       logs={logs}
       pausedCount={pausedCount}

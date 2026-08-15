@@ -3,11 +3,11 @@
 import { createContext, useContext, useSyncExternalStore } from 'react'
 import { createStore } from 'zustand'
 import { sseClient } from './sse-client'
-import type { ServiceConfig, ProjectDir } from './config'
+import type { ServiceConfig, ProjectConfig } from './config'
 
 export interface ServiceInitialData {
   services?: ServiceConfig[]
-  projectDirs?: ProjectDir[]
+  projectConfigs?: ProjectConfig[]
   running?: Record<string, boolean>
   logs?: Record<string, string[]>
   pausedCount?: number
@@ -17,7 +17,7 @@ export interface ServiceInitialData {
 
 export interface ServiceState {
   services: ServiceConfig[]
-  projectDirs: ProjectDir[]
+  projectConfigs: ProjectConfig[]
   running: Record<string, boolean>
   logs: Record<string, string[]>
   pausedCount: number
@@ -36,7 +36,7 @@ export function createServiceStore(state: ServiceState) {
 export function toServiceState(initial: ServiceInitialData): ServiceState {
   return {
     services: initial.services ?? [],
-    projectDirs: initial.projectDirs ?? [],
+    projectConfigs: initial.projectConfigs ?? [],
     running: initial.running ?? {},
     logs: initial.logs ?? {},
     pausedCount: initial.pausedCount ?? 0,

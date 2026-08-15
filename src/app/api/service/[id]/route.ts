@@ -4,7 +4,7 @@ import { getServiceStatus, stopService } from '@/lib/service-process'
 import { eventBus } from '@/lib/service-events'
 
 const RUNNING_BLOCKED_FIELDS = [
-  'projectDir',
+  'projectId',
   'backendProtocol',
   'backendHost',
   'backendPort',

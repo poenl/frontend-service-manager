@@ -3,16 +3,21 @@ import Conf from 'conf'
 export interface ServiceConfig {
   id: string
   name: string
-  projectDir: string
+  // 关联的项目配置 id（不可变主键），运行时按 id 解析目录路径
+  projectId: string
   backendProtocol?: 'http' | 'https'
   backendHost: string
   backendPort: string
   frontendPort: string
 }
 
-export interface ProjectDir {
+export interface ProjectConfig {
+  // 不可变主键，服务通过 id 关联项目配置（不随 name/path 变更而失效）
+  id: string
   name: string
   path: string
+  // 后端基地址注入到前端项目的环境变量名（必填，无统一标准故不设默认值）
+  backendEnvVar: string
 }
 
 export interface ScheduleConfig {
@@ -33,7 +38,7 @@ export interface WorkdayCache {
 
 interface Store {
   services: ServiceConfig[]
-  projectDirs: ProjectDir[]
+  projectConfigs: ProjectConfig[]
   schedule: ScheduleConfig
   skipPauseDate?: string
   workdayCache?: WorkdayCache
@@ -47,7 +52,7 @@ function store(): Conf<Store> {
       projectName: 'frontend-service-manager',
       defaults: {
         services: [],
-        projectDirs: [],
+        projectConfigs: [],
         schedule: {
           enabled: false,
           pauseTime: '18:00',
@@ -114,43 +119,41 @@ export function reorderServices(ids: string[]): ServiceConfig[] | null {
   return reordered as ServiceConfig[]
 }
 
-export function getProjectDirs(): ProjectDir[] {
-  const raw: unknown = store().get('projectDirs')
-  // 兼容旧版本 string[] 格式 —— 自动迁移为 { name, path }
-  if (Array.isArray(raw) && raw.length > 0 && typeof raw[0] === 'string') {
-    const migrated: ProjectDir[] = (raw as string[]).map((p) => ({ name: '', path: p }))
-    store().set('projectDirs', migrated)
-    return migrated
-  }
-  return raw as ProjectDir[]
+export function getProjectConfigs(): ProjectConfig[] {
+  return store().get('projectConfigs')
 }
 
-export function addProjectDir(input: { name: string; path: string }): ProjectDir[] {
-  const dirs = getProjectDirs()
-  if (dirs.some((d) => d.path === input.path)) return dirs
-  const updated = [...dirs, input]
-  store().set('projectDirs', updated)
+export function addProjectConfig(input: {
+  name: string
+  path: string
+  backendEnvVar: string
+}): ProjectConfig[] {
+  const configs = getProjectConfigs()
+  if (configs.some((c) => c.path === input.path)) return configs
+  const config: ProjectConfig = { id: crypto.randomUUID(), ...input }
+  const updated = [...configs, config]
+  store().set('projectConfigs', updated)
   return updated
 }
 
-export function removeProjectDir(path: string): ProjectDir[] {
-  const dirs = getProjectDirs().filter((d) => d.path !== path)
-  store().set('projectDirs', dirs)
-  return dirs
+export function removeProjectConfig(id: string): ProjectConfig[] {
+  const configs = getProjectConfigs().filter((c) => c.id !== id)
+  store().set('projectConfigs', configs)
+  return configs
 }
 
-export function updateProjectDir(
-  oldPath: string,
-  data: { name?: string; path?: string }
-): ProjectDir[] | null {
-  const dirs = getProjectDirs()
-  const idx = dirs.findIndex((d) => d.path === oldPath)
+export function updateProjectConfig(
+  id: string,
+  data: { name?: string; path?: string; backendEnvVar?: string }
+): ProjectConfig[] | null {
+  const configs = getProjectConfigs()
+  const idx = configs.findIndex((c) => c.id === id)
   if (idx === -1) return null
-  const newPath = data.path ?? oldPath
-  if (newPath !== oldPath && dirs.some((d) => d.path === newPath)) return null
-  const updated = [...dirs]
+  const newPath = data.path ?? configs[idx].path
+  if (newPath !== configs[idx].path && configs.some((c) => c.path === newPath)) return null
+  const updated = [...configs]
   updated[idx] = { ...updated[idx], ...data, path: newPath }
-  store().set('projectDirs', updated)
+  store().set('projectConfigs', updated)
   return updated
 }
 

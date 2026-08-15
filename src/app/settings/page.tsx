@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import ProjectDirsPanel from './project-dirs-panel'
+import ProjectConfigsPanel from './project-configs-panel'
 import SchedulePanel from './schedule-panel'
 
 export default function SettingsPage() {
@@ -20,7 +20,7 @@ export default function SettingsPage() {
         </CardHeader>
       </Card>
 
-      <ProjectDirsPanel />
+      <ProjectConfigsPanel />
       <SchedulePanel />
     </div>
   )

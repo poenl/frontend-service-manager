@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { homedir, platform } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { getService } from '@/lib/config'
+import { getService, getProjectConfigs } from '@/lib/config'
 import { serviceConfigSchema } from '@/lib/service-schema'
 import { eventBus } from '@/lib/service-events'
 
@@ -91,8 +91,12 @@ export async function startService(
     existing.startTime = Date.now()
   }
 
-  const cwd = config.projectDir.replace(/^~(?=\/|$)/, homedir())
-  if (!cwd || !existsSync(cwd)) return { success: false, message: '项目目录不存在', status: 422 }
+  // 通过 projectId 关联到项目配置，解析目录路径（path 变更不破坏服务关联）
+  const project = getProjectConfigs().find((c) => c.id === config.projectId)
+  const cwd = project?.path.replace(/^~(?=\/|$)/, homedir())
+  if (!project || !cwd || !existsSync(cwd)) {
+    return { success: false, message: '项目配置不存在或目录不存在', status: 422 }
+  }
 
   const pm = detectPm(cwd)
   const args = ['vite']
@@ -106,10 +110,16 @@ export async function startService(
     ? `${backendProtocol}://${config.backendHost}:${backendPort}`
     : undefined
   // 显式注入的环境变量为唯一来源，env 与日志前缀都由此派生，避免两者再次不一致
+  // 后端基地址注入的环境变量名来自项目配置（不暴露到前端客户端 bundle）；
+  // 配置未设置或未关联时拒绝启动，避免前端项目读不到变量
+  const envVarName = project.backendEnvVar
+  if (!envVarName) {
+    return { success: false, message: '项目配置未配置环境变量名，请到设置中配置', status: 400 }
+  }
   const injected = {
     FORCE_COLOR: '1',
     NODE_ENV: 'development',
-    ...(baseUrl ? { VITE_APP_BASE_URL: baseUrl } : {})
+    ...(baseUrl ? { [envVarName]: baseUrl } : {})
   }
   const env = { ...process.env, ...injected } as NodeJS.ProcessEnv
   const envPrefix =

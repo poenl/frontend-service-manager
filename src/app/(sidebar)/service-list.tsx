@@ -77,7 +77,7 @@ async function duplicateService(
   const { port } = await fetchRandomPort()
   const dup = await createService({
     name: duplicateName(services, svc.name),
-    projectDir: svc.projectDir,
+    projectId: svc.projectId,
     backendProtocol: svc.backendProtocol,
     backendHost: svc.backendHost,
     backendPort: svc.backendPort,
@@ -240,7 +240,7 @@ export default function ServiceList() {
     try {
       const svc = await createService({
         name: '',
-        projectDir: '',
+        projectId: '',
         backendHost: '',
         backendPort: '',
         frontendPort: ''

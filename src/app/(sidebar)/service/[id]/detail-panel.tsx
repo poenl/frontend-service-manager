@@ -48,7 +48,7 @@ export default function ServiceDetailPanel() {
   const selectedId = params?.id ?? ''
 
   const services = useServiceStore((s) => s.services)
-  const projectDirs = useServiceStore((s) => s.projectDirs)
+  const projectConfigs = useServiceStore((s) => s.projectConfigs)
   const running = useServiceStore((s) => s.running)
   const logs = useServiceStore((s) => s.logs)
   const hostname = useServiceStore((s) => s.hostname)
@@ -65,7 +65,7 @@ export default function ServiceDetailPanel() {
 
   if (!selected) return null
 
-  const selectedDir = projectDirs.find((p) => p.path === selected.projectDir)
+  const selectedConfig = projectConfigs.find((p) => p.id === selected.projectId)
   const isRunning = !!running[selectedId]
 
   // 乐观更新：先写本地 store，受控 value 即时反映，避免中文输入法组合被打断
@@ -81,7 +81,7 @@ export default function ServiceDetailPanel() {
   const frontendPortConflict = getFrontendPortConflict(selected, services)
   const fieldErrors = {
     name: touched.name ? (schemaErrors.name ?? null) : null,
-    projectDir: touched.projectDir ? (schemaErrors.projectDir ?? null) : null,
+    projectId: touched.projectId ? (schemaErrors.projectId ?? null) : null,
     backendHost: touched.backendHost ? (schemaErrors.backendHost ?? null) : null,
     backendPort: touched.backendPort ? (schemaErrors.backendPort ?? null) : null,
     frontendPort: touched.frontendPort ? (schemaErrors.frontendPort ?? null) : null
@@ -170,33 +170,33 @@ export default function ServiceDetailPanel() {
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>项目目录</FieldLabel>
+            <FieldLabel>项目配置</FieldLabel>
             <FieldContent>
               <Select
-                value={selected.projectDir || null}
+                value={selected.projectId || null}
                 onValueChange={(value) => {
-                  optimisticPatch(selected.id, { projectDir: value ?? '' })
-                  api.updateService(selected.id, { projectDir: value ?? '' })
-                  setTouched((prev) => ({ ...prev, projectDir: true }))
+                  optimisticPatch(selected.id, { projectId: value ?? '' })
+                  api.updateService(selected.id, { projectId: value ?? '' })
+                  setTouched((prev) => ({ ...prev, projectId: true }))
                 }}
               >
                 <SelectTrigger
                   className="w-full"
                   disabled={isRunning}
-                  aria-invalid={!!fieldErrors.projectDir || undefined}
+                  aria-invalid={!!fieldErrors.projectId || undefined}
                 >
-                  <SelectValue placeholder="选择项目目录">
-                    {selectedDir
-                      ? selectedDir.name
-                        ? `${selectedDir.name} (${selectedDir.path})`
-                        : selectedDir.path
-                      : selected.projectDir}
+                  <SelectValue placeholder="选择项目配置">
+                    {selectedConfig
+                      ? selectedConfig.name
+                        ? `${selectedConfig.name} (${selectedConfig.path})`
+                        : selectedConfig.path
+                      : ''}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {projectDirs.map((dir) => (
-                    <SelectItem key={dir.path} value={dir.path}>
-                      {dir.name ? `${dir.name} (${dir.path})` : dir.path}
+                  {projectConfigs.map((config) => (
+                    <SelectItem key={config.id} value={config.id}>
+                      {config.name ? `${config.name} (${config.path})` : config.path}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -206,10 +206,10 @@ export default function ServiceDetailPanel() {
                   href="/settings"
                   className="text-xs text-muted-foreground hover:text-foreground mt-0.5 inline-block"
                 >
-                  管理项目目录 →
+                  管理项目配置 →
                 </Link>
               )}
-              <FieldError>{fieldErrors.projectDir}</FieldError>
+              <FieldError>{fieldErrors.projectId}</FieldError>
             </FieldContent>
           </Field>
           <Field>

@@ -10,7 +10,7 @@ const optionalPort = z
 // 前后端共享的启动配置校验规则：驱动后端 400 校验、详情页表单错误与列表启动项禁用
 export const serviceConfigSchema = z.object({
   name: z.string().min(1, '请输入服务名称'),
-  projectDir: z.string().min(1, '请输入项目目录'),
+  projectId: z.string().min(1, '请选择项目配置'),
   backendProtocol: z.enum(['http', 'https']).optional(),
   backendHost: z.string().min(1, '请输入后端地址'),
   backendPort: optionalPort,
@@ -20,9 +20,28 @@ export const serviceConfigSchema = z.object({
     .refine((v) => /^\d+$/.test(v), '端口须为数字')
 })
 
+// 项目配置校验：name/path/环境变量名必填，环境变量名须符合 shell 变量命名
+// 与服务配置校验分离——项目配置承载后端基地址环境变量名，两者是独立配置块
+export const projectConfigSchema = z.object({
+  name: z.string().min(1, '请输入名称'),
+  path: z.string().min(1, '请输入路径'),
+  backendEnvVar: z
+    .string()
+    .min(1, '请输入环境变量名')
+    .refine(
+      (v) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(v),
+      '环境变量名须为字母数字下划线，且以字母或下划线开头'
+    )
+})
+
 // 派生字段级错误映射（首个错误为准），供前端逐字段绑定
 export function getFieldErrors(config: ServiceConfig): Record<string, string> {
-  const parsed = serviceConfigSchema.safeParse(config)
+  return getSchemaFieldErrors(serviceConfigSchema, config)
+}
+
+// 泛化的 zod 字段级错误提取：safeParse 失败时映射 path → 首个错误消息
+export function getSchemaFieldErrors(schema: z.ZodType, data: unknown): Record<string, string> {
+  const parsed = schema.safeParse(data)
   if (parsed.success) return {}
   const errors: Record<string, string> = {}
   for (const issue of parsed.error.issues) {
