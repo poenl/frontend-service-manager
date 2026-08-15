@@ -1,6 +1,6 @@
 {
   "name": "frontend-service-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Manage Vite dev servers from a web UI — spawn, watch logs, pause/resume, all in one local dashboard.",
   "keywords": [
     "frontend",
