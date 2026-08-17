@@ -1,9 +1,9 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { homedir, platform } from 'node:os'
+import { platform } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { getService, getProjectConfigs } from '@/lib/config'
+import { getService, getProjectConfigs, resolveProjectPath } from '@/lib/config'
 import { serviceConfigSchema } from '@/lib/service-schema'
 import { eventBus } from '@/lib/service-events'
 
@@ -93,7 +93,7 @@ export async function startService(
 
   // 通过 projectId 关联到项目配置，解析目录路径（path 变更不破坏服务关联）
   const project = getProjectConfigs().find((c) => c.id === config.projectId)
-  const cwd = project?.path.replace(/^~(?=\/|$)/, homedir())
+  const cwd = project && resolveProjectPath(project.path)
   if (!project || !cwd || !existsSync(cwd)) {
     return { success: false, message: '项目配置不存在或目录不存在', status: 422 }
   }

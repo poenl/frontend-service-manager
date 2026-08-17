@@ -1,4 +1,5 @@
 import Conf from 'conf'
+import { homedir } from 'node:os'
 
 export interface ServiceConfig {
   id: string
@@ -117,6 +118,11 @@ export function reorderServices(ids: string[]): ServiceConfig[] | null {
   if (reordered.some((s) => s === undefined)) return null
   store().set('services', reordered as ServiceConfig[])
   return reordered as ServiceConfig[]
+}
+
+// 项目路径归一化：展开 `~` 为家目录，供 API 校验与服务启动共用，避免两处解析规则漂移
+export function resolveProjectPath(raw: string): string {
+  return raw.replace(/^~(?=\/|$)/, homedir())
 }
 
 export function getProjectConfigs(): ProjectConfig[] {
