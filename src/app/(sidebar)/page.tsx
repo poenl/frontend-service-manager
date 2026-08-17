@@ -1,5 +1,15 @@
+import { Inbox } from 'lucide-react'
 import { redirect } from 'next/navigation'
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyMedia,
+  EmptyContent
+} from '@/components/ui/empty'
 import { getServices } from '@/lib/config'
+import CreateServiceButton from '@/app/(sidebar)/create-service-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,8 +21,17 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center text-muted-foreground">
-      {'暂无服务，点击左侧"+ 添加服务"创建'}
-    </div>
+    <Empty className="h-full">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Inbox />
+        </EmptyMedia>
+        <EmptyTitle>暂无服务</EmptyTitle>
+        <EmptyDescription>创建你的第一个服务，即可开始管理</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <CreateServiceButton />
+      </EmptyContent>
+    </Empty>
   )
 }
