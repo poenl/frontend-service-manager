@@ -4,6 +4,7 @@ import {
   getProjectConfigs,
   addProjectConfig,
   removeProjectConfig,
+  resolveProjectPath,
   updateProjectConfig
 } from '@/lib/config'
 import { projectConfigSchema } from '@/lib/service-schema'
@@ -16,7 +17,8 @@ function validateConfigInput(data: {
 }): string | null {
   const parsed = projectConfigSchema.safeParse(data)
   if (!parsed.success) return parsed.error.issues[0]?.message ?? '输入不合法'
-  if (!statSync(data.path, { throwIfNoEntry: false })?.isDirectory()) return '路径不存在或不是目录'
+  if (!statSync(resolveProjectPath(data.path), { throwIfNoEntry: false })?.isDirectory())
+    return '路径不存在或不是目录'
   return null
 }
 
