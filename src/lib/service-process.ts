@@ -1,6 +1,6 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { platform } from 'node:os'
+import { hostname, platform } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { getService, getProjectConfigs, resolveProjectPath } from '@/lib/config'
@@ -119,6 +119,8 @@ export async function startService(
   const injected = {
     FORCE_COLOR: '1',
     NODE_ENV: 'development',
+    // 允许通过本机 Bonjour/mDNS 主机名（如 my-mac.local）访问 dev server
+    __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: hostname().toLowerCase(),
     ...(baseUrl ? { [envVarName]: baseUrl } : {})
   }
   const env = { ...process.env, ...injected } as NodeJS.ProcessEnv
