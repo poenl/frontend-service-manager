@@ -76,13 +76,14 @@ export function subscribeSSE() {
   sseClient.on('snapshot', (data: unknown) => {
     // snapshot 携带完整服务端状态，整体替换而非合并，
     // 保证每次连接（含断线重连）后与服务端完全一致
-    const { services, running, logs, pausedCount } = data as {
+    const { services, projectConfigs, running, logs, pausedCount } = data as {
       services: ServiceConfig[]
+      projectConfigs: ProjectConfig[]
       running: Record<string, boolean>
       logs: Record<string, string[]>
       pausedCount: number
     }
-    storeInstance?.setState({ services, running, logs, pausedCount })
+    storeInstance?.setState({ services, projectConfigs, running, logs, pausedCount })
   })
 
   sseClient.on('status', (data: unknown) => {
@@ -108,6 +109,11 @@ export function subscribeSSE() {
 
   sseClient.on('services', (data: unknown) => {
     storeInstance?.setState({ services: data as ServiceConfig[] })
+  })
+
+  // 项目配置变更推送全量列表，服务配置选择器依赖此事件实时更新
+  sseClient.on('project-configs', (data: unknown) => {
+    storeInstance?.setState({ projectConfigs: data as ProjectConfig[] })
   })
 }
 

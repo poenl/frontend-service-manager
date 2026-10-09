@@ -1,4 +1,4 @@
-import { getServices } from '@/lib/config'
+import { getServices, getProjectConfigs } from '@/lib/config'
 import { getServiceStatus, getServiceLogs, getPausedCount } from '@/lib/service-process'
 import { eventBus } from '@/lib/service-events'
 import { computeReminderState } from '@/lib/schedule'
@@ -20,7 +20,13 @@ export async function GET(req: Request) {
         running[s.id] = getServiceStatus(s.id).running
         logs[s.id] = getServiceLogs(s.id).logs
       }
-      const snapshot = { services, running, logs, pausedCount: getPausedCount() }
+      const snapshot = {
+        services,
+        projectConfigs: getProjectConfigs(),
+        running,
+        logs,
+        pausedCount: getPausedCount()
+      }
       controller.enqueue(encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`))
 
       // 连接建立即推送一次当前提醒状态，避免「页面打开时正在提醒窗口内」漏掉通知
@@ -52,6 +58,12 @@ export async function GET(req: Request) {
         controller.enqueue(encoder.encode(`event: services\ndata: ${JSON.stringify(payload)}\n\n`))
       }
 
+      const onProjectConfigs = (payload: unknown) => {
+        controller.enqueue(
+          encoder.encode(`event: project-configs\ndata: ${JSON.stringify(payload)}\n\n`)
+        )
+      }
+
       const onReminder = (payload: unknown) => {
         controller.enqueue(encoder.encode(`event: reminder\ndata: ${JSON.stringify(payload)}\n\n`))
       }
@@ -60,6 +72,7 @@ export async function GET(req: Request) {
       eventBus.on('log', onLog)
       eventBus.on('paused', onPaused)
       eventBus.on('services', onServices)
+      eventBus.on('project-configs', onProjectConfigs)
       eventBus.on('reminder', onReminder)
 
       req.signal.addEventListener('abort', () => {
@@ -67,6 +80,7 @@ export async function GET(req: Request) {
         eventBus.off('log', onLog)
         eventBus.off('paused', onPaused)
         eventBus.off('services', onServices)
+        eventBus.off('project-configs', onProjectConfigs)
         eventBus.off('reminder', onReminder)
       })
     }

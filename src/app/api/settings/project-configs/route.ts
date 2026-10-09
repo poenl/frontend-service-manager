@@ -8,6 +8,7 @@ import {
   updateProjectConfig
 } from '@/lib/config'
 import { projectConfigSchema } from '@/lib/service-schema'
+import { eventBus } from '@/lib/service-events'
 
 // 校验项目配置输入是否合法：schema 校验必填与环境变量名格式，path 须是真实存在的目录
 function validateConfigInput(data: {
@@ -35,6 +36,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '该路径已存在' }, { status: 409 })
   }
   const result = addProjectConfig({ name, path, backendEnvVar })
+  // 推送全量列表，让其他页面的服务配置选择器实时更新
+  eventBus.emit('project-configs', result)
   return NextResponse.json(result)
 }
 
@@ -44,6 +47,7 @@ export async function PUT(request: NextRequest) {
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
   const result = updateProjectConfig(id, { name, path, backendEnvVar })
   if (!result) return NextResponse.json({ error: '更新失败' }, { status: 400 })
+  eventBus.emit('project-configs', result)
   return NextResponse.json(result)
 }
 
@@ -51,5 +55,6 @@ export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: '缺少 id 参数' }, { status: 400 })
   const result = removeProjectConfig(id)
+  eventBus.emit('project-configs', result)
   return NextResponse.json(result)
 }
