@@ -40,6 +40,7 @@ import type { ServiceConfig } from '@/lib/config'
 import { getFieldErrors, getFrontendPortConflict, isServiceStartable } from '@/lib/service-schema'
 import { openServiceTab } from '@/lib/open-service-tab'
 import * as api from '@/lib/service-api'
+import ProjectTypeIcon from '@/components/project-type-icon'
 import LogViewer from './log-viewer'
 
 export default function ServiceDetailPanel() {
@@ -186,17 +187,24 @@ export default function ServiceDetailPanel() {
                   aria-invalid={!!fieldErrors.projectId || undefined}
                 >
                   <SelectValue placeholder="选择项目配置">
-                    {selectedConfig
-                      ? selectedConfig.name
-                        ? `${selectedConfig.name} (${selectedConfig.path})`
-                        : selectedConfig.path
-                      : ''}
+                    {/* 未选中时 children 必须为 null，否则 placeholder 不会渲染 */}
+                    {selectedConfig ? (
+                      <span className="flex items-center gap-1.5">
+                        <ProjectTypeIcon type={selectedConfig.type} />
+                        {selectedConfig.name
+                          ? `${selectedConfig.name} (${selectedConfig.path})`
+                          : selectedConfig.path}
+                      </span>
+                    ) : null}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
                   {projectConfigs.map((config) => (
                     <SelectItem key={config.id} value={config.id}>
-                      {config.name ? `${config.name} (${config.path})` : config.path}
+                      <span className="flex items-center gap-1.5">
+                        <ProjectTypeIcon type={config.type} />
+                        {config.name ? `${config.name} (${config.path})` : config.path}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

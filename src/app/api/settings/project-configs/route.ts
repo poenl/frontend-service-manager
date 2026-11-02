@@ -10,17 +10,11 @@ import {
 import { projectConfigSchema } from '@/lib/service-schema'
 import { eventBus } from '@/lib/service-events'
 
-// 校验项目配置输入是否合法：schema 校验必填与环境变量名格式，path 须是真实存在的目录
-function validateConfigInput(data: {
-  name: string
-  path: string
-  backendEnvVar: string
-}): string | null {
-  const parsed = projectConfigSchema.safeParse(data)
-  if (!parsed.success) return parsed.error.issues[0]?.message ?? '输入不合法'
-  if (!statSync(resolveProjectPath(data.path), { throwIfNoEntry: false })?.isDirectory())
-    return '路径不存在或不是目录'
-  return null
+// 路径须指向真实存在的目录（schema 负责字段校验，这里补文件系统校验）
+function invalidPath(path: string): string | null {
+  return statSync(resolveProjectPath(path), { throwIfNoEntry: false })?.isDirectory()
+    ? null
+    : '路径不存在或不是目录'
 }
 
 export async function GET() {
@@ -28,24 +22,37 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const { name, path, backendEnvVar } = await request.json()
-  const invalid = validateConfigInput({ name, path, backendEnvVar })
-  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
+  // 整体交给 schema 解析（未知键由 zod 丢弃），按 type 校验各自必填字段
+  const parsed = projectConfigSchema.safeParse(await request.json())
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? '输入不合法' },
+      { status: 400 }
+    )
+  const input = parsed.data
+  const pathError = invalidPath(input.path)
+  if (pathError) return NextResponse.json({ error: pathError }, { status: 400 })
   // 后端权威校验：路径重复返回 409，避免前端跳过校验时的重复写入
-  if (getProjectConfigs().some((c) => c.path === path)) {
+  if (getProjectConfigs().some((c) => c.path === input.path)) {
     return NextResponse.json({ error: '该路径已存在' }, { status: 409 })
   }
-  const result = addProjectConfig({ name, path, backendEnvVar })
+  const result = addProjectConfig(input)
   // 推送全量列表，让其他页面的服务配置选择器实时更新
   eventBus.emit('project-configs', result)
   return NextResponse.json(result)
 }
 
 export async function PUT(request: NextRequest) {
-  const { id, name, path, backendEnvVar } = await request.json()
-  const invalid = validateConfigInput({ name, path, backendEnvVar })
-  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
-  const result = updateProjectConfig(id, { name, path, backendEnvVar })
+  const body = await request.json()
+  const parsed = projectConfigSchema.safeParse(body)
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? '输入不合法' },
+      { status: 400 }
+    )
+  const pathError = invalidPath(parsed.data.path)
+  if (pathError) return NextResponse.json({ error: pathError }, { status: 400 })
+  const result = updateProjectConfig(body.id, parsed.data)
   if (!result) return NextResponse.json({ error: '更新失败' }, { status: 400 })
   eventBus.emit('project-configs', result)
   return NextResponse.json(result)

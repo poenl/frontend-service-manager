@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/frontend-service-manager)](https://www.npmjs.com/package/frontend-service-manager)
 [![license](https://img.shields.io/npm/l/frontend-service-manager)](LICENSE)
 
-本机前端开发服务管理器：以图形界面集中管理多个前端项目的 vite dev server，并提供自包含的生产 daemon 托管命令 `fsm`。
+本机前端开发服务管理器：以图形界面集中管理多个前端项目（Vite / Electron）的 dev server，并提供自包含的生产 daemon 托管命令 `fsm`。
 
 ## 功能特性
 

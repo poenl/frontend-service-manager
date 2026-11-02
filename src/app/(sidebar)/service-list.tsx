@@ -40,6 +40,7 @@ import {
   AlertDialogCancel
 } from '@/components/ui/alert-dialog'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
+import ProjectTypeIcon from '@/components/project-type-icon'
 import { useServiceStore, setOperating, setServices } from '@/lib/service-store'
 import { openServiceTab } from '@/lib/open-service-tab'
 import type { ServiceConfig } from '@/lib/config'
@@ -90,6 +91,7 @@ function ServiceItem({
   id,
   index,
   name,
+  projectId,
   backendPort,
   frontendPort,
   readyToStart,
@@ -103,6 +105,7 @@ function ServiceItem({
   id: string
   index: number
   name: string
+  projectId: string
   backendPort: string
   frontendPort: string
   readyToStart: boolean
@@ -116,6 +119,9 @@ function ServiceItem({
   const router = useRouter()
   const running = useServiceStore((s) => s.running)
   const hostname = useServiceStore((s) => s.hostname)
+  // 项目类型图标由服务关联的项目配置决定，未关联时不显示
+  const projectConfigs = useServiceStore((s) => s.projectConfigs)
+  const projectType = projectConfigs.find((c) => c.id === projectId)?.type
   const url = useFrontendUrl(frontendPort, !!running[id], hostname)
   // dnd-kit sortable：ref 绑定整行（拖拽源与放置目标），isDragging 驱动拖拽中样式；
   // RestrictToVerticalAxis 限制拖拽仅沿 y 轴移动；
@@ -145,6 +151,7 @@ function ServiceItem({
             <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
               {/* 拖拽手柄：图标区显示 grab 光标提示可拖拽，事件冒泡不拦截点击跳转与右键菜单 */}
               <GripVertical className="size-3.5 shrink-0 text-muted-foreground/40 cursor-grab group-hover:text-muted-foreground/70" />
+              {projectType && <ProjectTypeIcon type={projectType} className="size-4 shrink-0" />}
               <span className="flex-1 truncate font-medium group-data-selected:font-bold">
                 {name || '未命名服务'}
               </span>
@@ -364,6 +371,7 @@ export default function ServiceList() {
                   id={s.id}
                   index={index}
                   name={s.name}
+                  projectId={s.projectId}
                   backendPort={s.backendPort}
                   frontendPort={s.frontendPort}
                   readyToStart={isServiceStartable(s, services)}

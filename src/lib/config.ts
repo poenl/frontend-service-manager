@@ -1,5 +1,6 @@
 import Conf from 'conf'
 import { homedir } from 'node:os'
+import { PROJECT_TYPES, type ProjectType, type ProjectTypeEnvField } from '@/lib/project-types'
 
 export interface ServiceConfig {
   id: string
@@ -12,14 +13,25 @@ export interface ServiceConfig {
   frontendPort: string
 }
 
-export interface ProjectConfig {
+// 项目类型来自注册表（决定启动命令与需要配置的变量名），新增类型无需改此文件
+export type { ProjectType }
+
+export type ProjectConfig = {
   // 不可变主键，服务通过 id 关联项目配置（不随 name/path 变更而失效）
   id: string
   name: string
   path: string
-  // 后端基地址注入到前端项目的环境变量名（必填，无统一标准故不设默认值）
-  backendEnvVar: string
-}
+  // 项目类型，旧数据无该字段时读取时按 vite 归一化
+  type: ProjectType
+} & Partial<Record<ProjectTypeEnvField, string>>
+
+// 项目配置写入入参：每个类型只要求注册表声明的变量名字段，从类型层阻止脏字段
+export type ProjectConfigInput = {
+  [K in ProjectType]: { type: K; name: string; path: string } & Record<
+    keyof (typeof PROJECT_TYPES)[K]['envFields'],
+    string
+  >
+}[ProjectType]
 
 export interface ScheduleConfig {
   enabled: boolean
@@ -125,15 +137,30 @@ export function resolveProjectPath(raw: string): string {
   return raw.replace(/^~(?=\/|$)/, homedir())
 }
 
-export function getProjectConfigs(): ProjectConfig[] {
-  return store().get('projectConfigs')
+// 按类型只保留注册表声明的变量名字段，避免存储里的陈旧字段（如切回 vite 后的端口变量名）泄漏到表单与启动逻辑
+function pickEnvFields(
+  source: Partial<Record<ProjectTypeEnvField, string>>,
+  type: ProjectType
+): Partial<Record<ProjectTypeEnvField, string>> {
+  const kept: Partial<Record<ProjectTypeEnvField, string>> = {}
+  for (const field of Object.keys(PROJECT_TYPES[type].envFields) as ProjectTypeEnvField[]) {
+    const value = source[field]
+    if (value) kept[field] = value
+  }
+  return kept
 }
 
-export function addProjectConfig(input: {
-  name: string
-  path: string
-  backendEnvVar: string
-}): ProjectConfig[] {
+export function getProjectConfigs(): ProjectConfig[] {
+  // 旧数据无 type 字段，读取时补为 vite（不写盘迁移，避免改动存储结构）
+  return store()
+    .get('projectConfigs')
+    .map((c) => {
+      const type = c.type ?? 'vite'
+      return { id: c.id, name: c.name, path: c.path, type, ...pickEnvFields(c, type) }
+    })
+}
+
+export function addProjectConfig(input: ProjectConfigInput): ProjectConfig[] {
   const configs = getProjectConfigs()
   if (configs.some((c) => c.path === input.path)) return configs
   const config: ProjectConfig = { id: crypto.randomUUID(), ...input }
@@ -150,7 +177,7 @@ export function removeProjectConfig(id: string): ProjectConfig[] {
 
 export function updateProjectConfig(
   id: string,
-  data: { name?: string; path?: string; backendEnvVar?: string }
+  data: Partial<ProjectConfigInput> & { name?: string; path?: string; type?: ProjectType }
 ): ProjectConfig[] | null {
   const configs = getProjectConfigs()
   const idx = configs.findIndex((c) => c.id === id)
@@ -158,7 +185,15 @@ export function updateProjectConfig(
   const newPath = data.path ?? configs[idx].path
   if (newPath !== configs[idx].path && configs.some((c) => c.path === newPath)) return null
   const updated = [...configs]
-  updated[idx] = { ...updated[idx], ...data, path: newPath }
+  const merged: ProjectConfig = { ...updated[idx], ...data, path: newPath }
+  // 重新组装而非修改 merged：类型切换后只保留新类型声明的字段，陈旧变量名不再落盘
+  updated[idx] = {
+    id: merged.id,
+    name: merged.name,
+    path: merged.path,
+    type: merged.type,
+    ...pickEnvFields(merged, merged.type)
+  }
   store().set('projectConfigs', updated)
   return updated
 }

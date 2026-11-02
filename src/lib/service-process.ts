@@ -4,6 +4,7 @@ import { hostname, platform } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { getService, getProjectConfigs, resolveProjectPath } from '@/lib/config'
+import { PROJECT_TYPES, type ProjectTypeEnvField } from '@/lib/project-types'
 import { serviceConfigSchema } from '@/lib/service-schema'
 import { eventBus } from '@/lib/service-events'
 
@@ -99,9 +100,6 @@ export async function startService(
   }
 
   const pm = detectPm(cwd)
-  const args = ['vite']
-  args.push('--no-open')
-  if (config.frontendPort) args.push('--port', config.frontendPort)
 
   // 后端协议默认为 http；端口可选，留空时按协议取默认（http 80 / https 443）
   const backendProtocol = config.backendProtocol === 'https' ? 'https' : 'http'
@@ -109,19 +107,32 @@ export async function startService(
   const baseUrl = config.backendHost
     ? `${backendProtocol}://${config.backendHost}:${backendPort}`
     : undefined
+
+  // 启动命令与参数由项目类型注册表提供（如 vite 的 --port、electron 的 dev）
+  const typeDef = PROJECT_TYPES[project.type]
+  const args = [
+    typeDef.bin,
+    ...typeDef.args({ frontendPort: config.frontendPort, backendBaseUrl: baseUrl })
+  ]
+
   // 显式注入的环境变量为唯一来源，env 与日志前缀都由此派生，避免两者再次不一致
-  // 后端基地址注入的环境变量名来自项目配置（不暴露到前端客户端 bundle）；
-  // 配置未设置或未关联时拒绝启动，避免前端项目读不到变量
-  const envVarName = project.backendEnvVar
-  if (!envVarName) {
-    return { success: false, message: '项目配置未配置环境变量名，请到设置中配置', status: 400 }
+  // 变量名来自项目配置（不暴露到前端客户端 bundle），任一类型要求的变量名缺失即拒绝启动
+  const typeEnv: Record<string, string> = {}
+  for (const [field, fieldDef] of Object.entries(typeDef.envFields)) {
+    const name = project[field as ProjectTypeEnvField]
+    if (!name) {
+      return { success: false, message: `项目配置未配置${fieldDef.label}，请到设置中配置`, status: 400 }
+    }
+    // 注入值按注册表声明取值；后端基地址未配置时不注入，避免写入空值
+    const value = fieldDef.value === 'frontendPort' ? config.frontendPort : baseUrl
+    if (value) typeEnv[name] = value
   }
   const injected = {
     FORCE_COLOR: '1',
     NODE_ENV: 'development',
     // 允许通过本机 Bonjour/mDNS 主机名（如 my-mac.local）访问 dev server
     __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: hostname().toLowerCase(),
-    ...(baseUrl ? { [envVarName]: baseUrl } : {})
+    ...typeEnv
   }
   const env = { ...process.env, ...injected } as NodeJS.ProcessEnv
   const envPrefix =
@@ -129,7 +140,7 @@ export async function startService(
       .map(([k, v]) => `${k}=${v}`)
       .join(' ') + ' '
 
-  // ponytail: 仅支持 Vite，后续可按需扩展 webpack/dev-server 等
+  // 启动命令由类型注册表提供，新增类型无需改本文件
   const commandLine = `[${new Date().toLocaleTimeString()}] $ ${envPrefix}${pm} ${args.join(' ')}`
   const logs: string[] = [commandLine]
 

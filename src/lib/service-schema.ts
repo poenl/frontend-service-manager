@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { ServiceConfig } from '@/lib/config'
+import { PROJECT_TYPES, type EnvFieldDefinition } from '@/lib/project-types'
 
 // 端口字段（后端端口可选）：可空字符串，若填写须为 0-65535 的纯数字
 const optionalPort = z
@@ -20,19 +21,46 @@ export const serviceConfigSchema = z.object({
     .refine((v) => /^\d+$/.test(v), '端口须为数字')
 })
 
-// 项目配置校验：name/path/环境变量名必填，环境变量名须符合 shell 变量命名
-// 与服务配置校验分离——项目配置承载后端基地址环境变量名，两者是独立配置块
-export const projectConfigSchema = z.object({
-  name: z.string().min(1, '请输入名称'),
-  path: z.string().min(1, '请输入路径'),
-  backendEnvVar: z
+// 变量名校验：须符合 shell 变量命名（字母或下划线开头，仅字母数字下划线）
+const envVarName = (label: string) =>
+  z
     .string()
-    .min(1, '请输入环境变量名')
-    .refine(
-      (v) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(v),
-      '环境变量名须为字母数字下划线，且以字母或下划线开头'
-    )
-})
+    .min(1, `请输入${label}`)
+    .refine((v) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(v), `${label}须为字母数字下划线，且以字母或下划线开头`)
+
+// 项目配置公共字段
+const projectBaseFields = {
+  name: z.string().min(1, '请输入名称'),
+  path: z.string().min(1, '请输入路径')
+}
+
+// 把某类型的 envFields 转为 zod 字段映射：键类型保留，label 与变量名规则均来自注册表
+function envFieldSchemas<K extends string>(fields: Record<K, EnvFieldDefinition>) {
+  return Object.fromEntries(
+    (Object.entries(fields) as [string, EnvFieldDefinition][]).map(([field, def]) => [
+      field,
+      envVarName(def.label)
+    ])
+  ) as Record<K, z.ZodString>
+}
+
+// 项目配置校验：变量名字段随类型注册表自动变化（vite 只需后端地址变量名，electron 另需前端端口变量名）
+// 与服务配置校验分离——项目配置承载注入变量名，两者是独立配置块
+// 新增类型时在此加一个分支，字段集合仍由注册表提供
+// ponytail: 分支手写而非从注册表动态生成 union，因为动态生成会丢失 parsed.data 的字段类型
+// shortcut: 新增类型需手动加分支，字段仍自动跟随注册表，类型数量稳定后不必升级
+export const projectConfigSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('vite'),
+    ...projectBaseFields,
+    ...envFieldSchemas(PROJECT_TYPES.vite.envFields)
+  }),
+  z.object({
+    type: z.literal('electron'),
+    ...projectBaseFields,
+    ...envFieldSchemas(PROJECT_TYPES.electron.envFields)
+  })
+])
 
 // 派生字段级错误映射（首个错误为准），供前端逐字段绑定
 export function getFieldErrors(config: ServiceConfig): Record<string, string> {

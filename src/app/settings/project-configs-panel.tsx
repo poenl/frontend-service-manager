@@ -14,15 +14,17 @@ import {
   AlertDialogCancel,
   AlertDialogAction
 } from '@/components/ui/alert-dialog'
+import ProjectTypeIcon from '@/components/project-type-icon'
+import { PROJECT_TYPES, type ProjectTypeEnvField } from '@/lib/project-types'
 import { toast } from '@/components/ui/toast'
-import type { ProjectConfig } from '@/lib/config'
+import type { ProjectConfig, ProjectConfigInput } from '@/lib/config'
 import {
   fetchProjectConfigs,
   addProjectConfig,
   removeProjectConfig,
   updateProjectConfig
 } from '@/lib/settings-api'
-import ProjectConfigFormDialog, { type DirValues } from './project-config-form-dialog'
+import ProjectConfigFormDialog from './project-config-form-dialog'
 
 export default function ProjectConfigsPanel() {
   const [dirs, setDirs] = useState<ProjectConfig[]>([])
@@ -43,13 +45,13 @@ export default function ProjectConfigsPanel() {
     })()
   }, [])
 
-  const handleAdd = async ({ name, path, backendEnvVar }: DirValues) => {
-    if (dirs.some((d) => d.path === path)) {
+  const handleAdd = async (input: ProjectConfigInput) => {
+    if (dirs.some((d) => d.path === input.path)) {
       toast.add({ type: 'error', title: '该路径已存在' })
       return
     }
     try {
-      const updated = await addProjectConfig({ name, path, backendEnvVar })
+      const updated = await addProjectConfig(input)
       setDirs(updated)
       setAddOpen(false)
     } catch {
@@ -66,14 +68,14 @@ export default function ProjectConfigsPanel() {
     }
   }
 
-  const handleEdit = async ({ name, path, backendEnvVar }: DirValues) => {
+  const handleEdit = async (input: ProjectConfigInput) => {
     if (!editingDir) return
-    if (path !== editingDir.path && dirs.some((d) => d.path === path)) {
+    if (input.path !== editingDir.path && dirs.some((d) => d.path === input.path)) {
       toast.add({ type: 'error', title: '该路径已存在' })
       return
     }
     try {
-      const updated = await updateProjectConfig(editingDir.id, { name, path, backendEnvVar })
+      const updated = await updateProjectConfig(editingDir.id, input)
       setDirs(updated)
       setEditingDir(null)
     } catch {
@@ -109,13 +111,25 @@ export default function ProjectConfigsPanel() {
                   className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
                 >
                   <div className="flex items-center gap-3 min-w-0">
+                    {/* 类型图标裸放作为分类标记；去掉 Badge 外壳，避免无文字时的胶囊变形 */}
+                    <ProjectTypeIcon type={dir.type} className="size-4 shrink-0" />
                     <span className="font-medium truncate shrink-0 min-w-0">{dir.name}</span>
+                    <span className="text-muted-foreground shrink-0">·</span>
                     <code className="font-mono text-xs text-muted-foreground truncate min-w-0">
                       {dir.path}
                     </code>
-                    <code className="font-mono text-xs text-muted-foreground truncate min-w-0">
-                      {dir.backendEnvVar}
-                    </code>
+                    {/* 变量名个数随类型注册表变化，各自前置分隔符以保持单行节奏 */}
+                    {(Object.keys(PROJECT_TYPES[dir.type].envFields) as ProjectTypeEnvField[]).map(
+                      (field) =>
+                        dir[field] && (
+                          <span key={field} className="flex items-center gap-3 min-w-0">
+                            <span className="text-muted-foreground shrink-0">·</span>
+                            <code className="font-mono text-xs text-muted-foreground truncate min-w-0">
+                              {dir[field]}
+                            </code>
+                          </span>
+                        )
+                    )}
                   </div>
                   <div className="flex gap-1 shrink-0">
                     <Button
