@@ -1,5 +1,6 @@
 import type { ServiceConfig } from '@/lib/config'
 import { request } from '@/lib/http'
+import type { ServiceAction } from '@/lib/service-store'
 
 const BASE = '/api/service'
 
@@ -42,9 +43,10 @@ export async function reorderServices(ids: string[]): Promise<void> {
   })
 }
 
+// 重启走服务端 stop→start 编排，与启动/停止同属一次 POST
 export async function operateService(
   id: string,
-  action: 'start' | 'stop'
+  action: ServiceAction
 ): Promise<{ success: boolean; message: string }> {
   return request(`${BASE}/${id}/${action}`, { method: 'POST' })
 }

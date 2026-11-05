@@ -15,6 +15,9 @@ export interface ServiceInitialData {
   hostname?: string
 }
 
+// 服务可执行的操作：重启由服务端一次请求完成，前端只负责置 loading
+export type ServiceAction = 'start' | 'stop' | 'restart'
+
 export interface ServiceState {
   services: ServiceConfig[]
   projectConfigs: ProjectConfig[]
@@ -23,7 +26,7 @@ export interface ServiceState {
   pausedCount: number
   isLocal: boolean
   hostname: string
-  operating: { id: string; action: 'start' | 'stop' } | null
+  operating: { id: string; action: ServiceAction } | null
 }
 
 export type ServiceStore = ReturnType<typeof createServiceStore>
@@ -55,7 +58,7 @@ export function getServiceStore(initial: ServiceInitialData): ServiceStore {
 }
 
 // 设置操作中状态：列表右键菜单与详情页按钮共用，保证 loading 同步
-export function setOperating(op: { id: string; action: 'start' | 'stop' } | null) {
+export function setOperating(op: { id: string; action: ServiceAction } | null) {
   storeInstance?.setState({ operating: op })
 }
 

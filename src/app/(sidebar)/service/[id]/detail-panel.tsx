@@ -33,9 +33,10 @@ import {
   AlertDialogFooter,
   AlertDialogCancel
 } from '@/components/ui/alert-dialog'
-import { Play, Square, Circle, Dices } from 'lucide-react'
+import { Play, Square, Circle, Dices, RotateCw } from 'lucide-react'
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import { useServiceStore, setOperating, getServiceStore } from '@/lib/service-store'
+import type { ServiceAction } from '@/lib/service-store'
 import type { ServiceConfig } from '@/lib/config'
 import { getFieldErrors, getFrontendPortConflict, isServiceStartable } from '@/lib/service-schema'
 import { openServiceTab } from '@/lib/open-service-tab'
@@ -134,7 +135,7 @@ export default function ServiceDetailPanel() {
     }
   }
 
-  const handleServiceAction = async (id: string, action: 'start' | 'stop') => {
+  const handleServiceAction = async (id: string, action: ServiceAction) => {
     if (action === 'stop' && !running[id]) return
     setOperating({ id, action })
     try {
@@ -361,6 +362,19 @@ export default function ServiceDetailPanel() {
               <Square className="size-4" />
             )}{' '}
             停止
+          </Button>
+          {/* 重启仅对运行中的服务开放，服务端一次请求完成先停后起 */}
+          <Button
+            variant="outline"
+            onClick={() => handleServiceAction(selected.id, 'restart')}
+            disabled={operating?.id === selected.id || !isRunning}
+          >
+            {operating?.id === selected.id && operating?.action === 'restart' ? (
+              <Spinner />
+            ) : (
+              <RotateCw className="size-4" />
+            )}{' '}
+            重启
           </Button>
           <Separator orientation="vertical" className="h-6" />
           {isRunning && selected.frontendPort ? (

@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   Copy,
   GripVertical,
+  RotateCw,
   Trash2
 } from 'lucide-react'
 import Link from 'next/link'
@@ -42,6 +43,7 @@ import {
 import { useFrontendUrl } from '@/lib/use-frontend-url'
 import ProjectTypeIcon from '@/components/project-type-icon'
 import { useServiceStore, setOperating, setServices } from '@/lib/service-store'
+import type { ServiceAction } from '@/lib/service-store'
 import { openServiceTab } from '@/lib/open-service-tab'
 import type { ServiceConfig } from '@/lib/config'
 import { isServiceStartable } from '@/lib/service-schema'
@@ -99,6 +101,7 @@ function ServiceItem({
   operating,
   onStart,
   onStop,
+  onRestart,
   onDuplicate,
   onRequestDelete
 }: {
@@ -110,9 +113,10 @@ function ServiceItem({
   frontendPort: string
   readyToStart: boolean
   selected: boolean
-  operating: { id: string; action: 'start' | 'stop' } | null
+  operating: { id: string; action: ServiceAction } | null
   onStart: (id: string) => void
   onStop: (id: string) => void
+  onRestart: (id: string) => void
   onDuplicate: (id: string) => void
   onRequestDelete: (id: string) => void
 }) {
@@ -184,6 +188,13 @@ function ServiceItem({
         </ContextMenuItem>
         <ContextMenuItem disabled={!running[id] || operating?.id === id} onClick={() => onStop(id)}>
           <Square /> 停止
+        </ContextMenuItem>
+        {/* 重启仅对运行中的服务开放，服务端一次请求完成先停后起 */}
+        <ContextMenuItem
+          disabled={!running[id] || operating?.id === id}
+          onClick={() => onRestart(id)}
+        >
+          <RotateCw /> 重启
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onDuplicate(id)}>
           <Copy /> 复制
@@ -270,7 +281,7 @@ export default function ServiceList() {
   }
 
   // 菜单启动/停止：操作期间写入共享状态（详情页同步 loading），失败由 request() 统一 toast
-  const handleOperate = async (id: string, action: 'start' | 'stop') => {
+  const handleOperate = async (id: string, action: ServiceAction) => {
     setOperating({ id, action })
     try {
       await operateService(id, action)
@@ -379,6 +390,7 @@ export default function ServiceList() {
                   operating={operating}
                   onStart={(id) => handleOperate(id, 'start')}
                   onStop={(id) => handleOperate(id, 'stop')}
+                  onRestart={(id) => handleOperate(id, 'restart')}
                   onDuplicate={handleDuplicate}
                   onRequestDelete={setDeleteId}
                 />
